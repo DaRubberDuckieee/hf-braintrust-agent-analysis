@@ -1,0 +1,12 @@
+pandas
+numpy
+matplotlib
+seaborn
+statsmodels
+adjustText
+nbformat
+requests
+python-dotenv
+# data import (scripts/convert_hf_traces.py)
+huggingface_hub
+pyarrow
