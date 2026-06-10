@@ -277,8 +277,7 @@ def config_reliability(frame, min_cell=5, min_total=10):
 # ---------------------------------------------------------------- stats key
 md(r"""### 📐 Stats key — what every band, bar, and dot is computed from
 
-Every plot below reuses the same handful of statistics. Read this once and the
-legends are self-explanatory (`k` = successes, `n` = tasks, `z` = 1.96 for 95%).
+Every plot below reuses the same handful of statistics.(`k` = successes, `n` = tasks, `z` = 1.96 for 95%).
 
 - **Success rate** $p = k/n$ — the fraction of tasks the LLM judge scored 1.
 - **Wilson 95% CI** (the error bars / `±` half-widths) — a binomial interval that,
@@ -326,7 +325,7 @@ macro-average is only strictly comparable between configs that ran the *same set
 of suites — so coverage (`n_benchmarks`) is shown alongside to flag when it isn't.
 """)
 
-md(r"""### 1·0 · Coverage — the design is badly unbalanced (read this first)
+md(r"""### 1·0 · Coverage — the design is unbalanced (read this first)
 
 Before any ranking: **not every config ran every benchmark**, and the gaps are
 large enough to invalidate naive cross-config comparisons. The matrix below is the
@@ -440,7 +439,7 @@ the ranking.
 than 3 suites, so their position on this axis is *not* comparable to the
 full-coverage configs — they may simply have run an easier (or harder) subset.
 Treat them as "insufficient evidence to rank," not as genuinely better/worse, and
-rely on §1e/§1g/§1h (which equalise coverage) for cross-config claims.""")
+rely on the other plots for cross-config comparison.""")
 
 md("### 1b · Success vs. predictability — the reliability quadrant")
 

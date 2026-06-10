@@ -26,24 +26,7 @@ We scored success with an LLM judge (~64% overall success across 1,780 runs) and
 
 ---
 
-## ✍️ My takeaways
-
-<!-- IZZY: add your own bullet-point takeaways here. This section is yours — the
-     numbered list above is the data-driven summary; use this space for the
-     editorial read, the "so what for us", caveats you want to lead with, etc. -->
-
-- _…_
-- _…_
-- _…_
-
----
-
 ## 📊 How these graphs were made (and the stats in them)
-
-Every figure below is generated from `data/full.json` (all 1,781 root spans pulled
-from Braintrust via BTQL) by [`scripts/build_notebook.py`](./scripts/build_notebook.py) —
-run `python scripts/build_notebook.py --export` to regenerate the notebook **and**
-re-render every PNG in `out/plots/`. In short:
 
 - **One tidy row per agent rollout.** We flatten each span to `(harness, model,
   benchmark, task_success, tokens, calls, duration)`, normalize the ~10 logged model
@@ -79,21 +62,18 @@ re-render every PNG in `out/plots/`. In short:
 
 ---
 
----
-
 ## 0. Why Braintrust (and why raw traces aren't enough)
 
-Here's the problem: HuggingFace shipped the Exgentic dataset as 1,781 execution traces — raw JSON files with everything that happened inside each agent run. You can download them and see what happened. But you can't easily *query* them, *score* them, or *compare* them at scale without writing custom pipelines.
+HuggingFace shipped the Exgentic dataset as 1,781 execution traces — raw JSON files with everything that happened inside each agent run. You can download them and see what happened. But you can't easily *query* them, *score* them, or *compare* them at scale without writing custom pipelines.
 
-We needed three things the raw traces don't give you:
+The Braintrust ingest enabled... 
 
-1. **Queryability.** We wanted to group by (benchmark × harness × model) and spot patterns. That's 50k child spans across 1,781 sessions. You can't hand-parse that; you need SQL.
+1. **Queryability.** We wanted to group by (benchmark × harness × model) and spot patterns. That's 50k child spans across 1,781 sessions. 
 
 2. **Scorability with audits.** No benchmark published its grading verdicts (hidden tests, database state checks). We built an LLM-as-judge, but feeding it back into JSON and re-uploading is fragile — one wrong move and you corrupt the metadata. Braintrust's deterministic span IDs + `bt sync push` made it safe and reproducible.
 
-3. **Statistical rigor.** The raw headline was "open models crush closed models." But different models ran different task mixes (Simpson's paradox). To control for that, we needed to regress success ~ benchmark + model + harness on all 1,780 rows at once. Braintrust's metadata fields made that possible in three lines of Python.
 
-**The workflow that worked:** HF JSON → Braintrust queryable logs → LLM judge scores → SQL grouping → regression analysis → real insights.
+**The workflow that worked:** HF JSON → Braintrust queryable logs → LLM judge scores → SQL grouping + regression analysis → real insights.
 
 Each layer let us ask questions the previous layer couldn't answer.
 
@@ -167,7 +147,7 @@ Output: 1,781 sessions → ~50k spans in the `Hugging Face topics` project.
 
 ---
 
-## 1c. 🆕 Braintrust Topics — the agents self-organize
+## 1c. 🆕!!! Braintrust Topics — the agents self-organize
 
 Before writing a single query, [**Topics**](https://www.braintrust.dev/blog/topics)
 (a new Braintrust feature, in beta) gave us a map of the dataset for free. It runs
@@ -420,37 +400,7 @@ and more — a head start on the manual §2/§8 failure-mode analysis.*
 
 ---
 
-## 6b. Evaluation Card — judge methodology & reliability
 
-<!-- TODO: This card format is informed by eval-eval.ai.
-The goal: document the success metric so it's auditable and someone building on this work
-knows exactly what "64% success" means.
--->
-
-**Metric:** `task_success` — LLM-as-judge binary (0/1) verdict on whether each agent
-completed its assigned task.
-
-| Property | Value |
-|---|---|
-| **Judge model** | GPT-4.1 for all runs; GPT-4o for GPT-4.1's own runs (avoid self-grading) |
-| **Input** | The agent's full final conversation (task + all intermediate steps + final action/response) |
-| **Rubric** | Task-specific (swebench: diff + passing tests; appworld: all actions done; tau2: correct tool use + confirmed; browsecompplus: clear, well-supported answer) |
-| **Criterion** | Strict: ambiguous or unverified = 0 |
-| **Coverage** | 1,780 / 1,781 sessions (99.9%) |
-| **Overall rate** | ~64% success |
-| **Benchmark breakdown** | swebench 91% · appworld 47% · browsecompplus 64% · tau2_airline 64% · tau2_retail 83% · tau2_telecom 42% |
-
-**Reliability by benchmark** (how much to trust each number):
-- **🟢 STRONG:** `swebench` — judge sees the actual diff and test results; can verify independently.
-- **🟡 MEDIUM:** `appworld`, `tau2_*` — judge sees tool calls and agent's confirmation, but not the benchmark's hidden official grader.
-- **🔴 WEAK:** `browsecompplus` — no gold answer; judge must infer from reasoning quality.
-
-**Limitations:**
-- Judge is a **proxy of the agent's own verification**, not ground truth. A run can look complete to GPT-4 but fail the benchmark's actual hidden tests.
-- GPT-4 models only; no access to other judge perspectives (may systematize their blindspots).
-- Judge reasoning attached to every verdict (queryable in Braintrust UI + JSON export); manually spot-check to calibrate.
-
-**Confidence intervals:** All success %'s below report Wilson 95% CI (binomial, not normal).
 
 ---
 
