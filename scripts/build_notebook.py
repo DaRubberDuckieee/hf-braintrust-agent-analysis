@@ -397,7 +397,9 @@ ax.scatter(relc.macro, range(len(relc)), marker="D", s=62, color="#c0392b",
            edgecolor="white", linewidth=1, zorder=5, label="benchmark-balanced (macro)")
 for y, (_, r) in enumerate(relc.iterrows()):
     thin = r.n_benchmarks < COMPARABLE_BM
-    ax.text(max(r.ci_hi, r.macro) + 0.014, y, f"{r.micro:.0%}", va="center", ha="left",
+    # value labels live in a fixed right-hand column, clear of the error bars, so the
+    # number reads as the bar's point estimate rather than a label on the whisker
+    ax.text(1.10, y, f"{r.micro:.0%}", va="center", ha="right",
             fontsize=10.5, weight="semibold", color="#333333")
     ax.text(1.235, y, f"n={r.n} · {int(r.n_benchmarks)}bm", va="center", ha="right",
             fontsize=9, color="#c0392b" if thin else "#999999",
@@ -413,6 +415,15 @@ titled(ax, "Pooled bars vs benchmark-balanced diamonds",
 ax.margins(y=0.01)
 sns.despine(ax=ax, left=True)
 ax.tick_params(left=False)
+# Explicit legend so the red diamond is labelled on the plot itself, not just in the subtitle.
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+ax.legend(handles=[
+    Patch(facecolor=sns.color_palette("crest", as_cmap=True)(0.75),
+          label="pooled (micro) rate ±Wilson 95% CI"),
+    Line2D([0], [0], marker="D", linestyle="none", markerfacecolor="#c0392b",
+           markeredgecolor="white", markersize=9, label="benchmark-balanced (macro) rate"),
+], loc="lower right", frameon=True, framealpha=0.92, edgecolor="#cccccc", fontsize=9)
 plt.tight_layout()
 plt.show()
 
@@ -624,10 +635,11 @@ for i, model in enumerate(models_ord):
             color=[hpal[h] for h in sub.harness],
             error_kw=dict(ecolor="#666666", capsize=3, lw=1.1), zorder=3)
     for y, s in sub.iterrows():
-        ax.text(min(s.ci_hi + 0.025, 1.0), y, f"{s.rate:.0%}", va="center", ha="left",
+        # fixed right-hand column, clear of the whiskers (see plot above)
+        ax.text(1.17, y, f"{s.rate:.0%}", va="center", ha="right",
                 fontsize=9.5, weight="semibold", color="#333333")
     ax.set_yticks(range(len(sub))); ax.set_yticklabels(sub.harness, fontsize=9.5)
-    ax.set_xlim(0, 1.12); ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
+    ax.set_xlim(0, 1.18); ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
     # Title names the shared suite(s) the swing is measured on — so a Δ computed on
     # appworld-only reads differently from one spanning several suites.
     ax.set_title(f"{model}   Δ{swing.loc[model, 'swing']:.0%}", loc="left",
@@ -730,10 +742,11 @@ for i, grp in enumerate(cells):
             color=[hpal[h] for h in grp.harness],
             error_kw=dict(ecolor="#666666", capsize=2.5, lw=1), zorder=3)
     for y, (_, s) in enumerate(grp.iterrows()):
-        ax.text(min(s.ci_hi + 0.03, 1.0), y, f"{s.success_rate:.0%}", va="center",
-                ha="left", fontsize=9, weight="semibold", color="#333333")
+        # fixed right-hand column, clear of the whiskers (see plots above)
+        ax.text(1.19, y, f"{s.success_rate:.0%}", va="center",
+                ha="right", fontsize=9, weight="semibold", color="#333333")
     ax.set_yticks(range(len(grp))); ax.set_yticklabels(grp.harness, fontsize=8.5)
-    ax.set_xlim(0, 1.15); ax.set_ylim(-0.6, len(grp) - 0.4)
+    ax.set_xlim(0, 1.20); ax.set_ylim(-0.6, len(grp) - 0.4)
     ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
     b, m = grp.iloc[0][["benchmark", "model"]]
     delta = grp.success_rate.max() - grp.success_rate.min()
@@ -766,6 +779,13 @@ percentage points, holding the suite mix and the model fixed** — exactly the
 coverage-adjusted number the raw averages couldn't give. `tool_calling` (the
 weakest) is the reference, so every coefficient reads as "points above
 `tool_calling`, all else equal."
+
+> **Adjusted ≠ balanced.** This is *not* the benchmark-**balanced** (macro) rate
+> from §1a/§1b. There, we average each config's per-suite rates with **equal weight
+> per suite**. Here, benchmark is a **covariate** that *partials out* its main
+> effect, but every rollout still counts **once** — suites with more tasks pull the
+> fit harder; we do not re-weight them to equal size. Both neutralise the same
+> coverage confound, by different means: §1a **re-weights**, §1h **adjusts**.
 
 To settle *harness vs model* fairly, we also compute each factor's **incremental
 R²** — how much variance it explains when *added on top of the other two*. That is
@@ -801,16 +821,20 @@ incr = pd.Series({
 
 fig, (axL, axR) = plt.subplots(1, 2, figsize=(15, 4.6), gridspec_kw={"width_ratios": [1.45, 1]})
 # Left: harness coefficient forest plot
+# all effect labels sit in one fixed column to the right of every CI line, so each
+# number reads as the point estimate rather than a tag on its whisker tip
+label_x = hp.hi.max() + 0.03
 for y, (_, r) in enumerate(hp.iterrows()):
     is_ref = r.harness == "tool_calling"
     c = "#999999" if is_ref else ("#2a8a4a" if r.coef > 0 else "#c0392b")
     if not is_ref:
         axL.plot([r.lo, r.hi], [y, y], color=c, lw=2, alpha=0.5, zorder=2)
     axL.scatter(r.coef, y, s=130, color=c, edgecolor="white", linewidth=1.3, zorder=3)
-    tag = "  (ref)" if is_ref else (f"  +{r.coef:.0%}" if r.coef >= 0 else f"  {r.coef:.0%}")
-    axL.text(r.hi + 0.01 if not is_ref else 0.01, y, tag, va="center", fontsize=9,
+    tag = "(ref)" if is_ref else (f"+{r.coef:.0%}" if r.coef >= 0 else f"{r.coef:.0%}")
+    axL.text(label_x, y, tag, va="center", ha="left", fontsize=9,
              weight="semibold", color=c)
 axL.axvline(0, ls="--", c="#bbbbbb", lw=1, zorder=0)
+axL.set_xlim(hp.lo.min() - 0.03, label_x + 0.10)
 axL.set_yticks(range(len(hp))); axL.set_yticklabels(hp.harness)
 axL.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
 axL.set_xlabel("effect on success vs. tool_calling (pp, adjusted for model + benchmark)")
@@ -837,8 +861,11 @@ by their effect on success *with model and benchmark held fixed* — `tool_calli
 is the floor and the code/agentic harnesses sit well above it, with CIs that clear
 zero. The right panel is the clean version of §1d: even after removing the coverage
 confound, **harness adds more incremental R² than model does**, confirming the
-scaffolding is the larger lever. (LPM is used for interpretable percentage-point
-effects; a logit fit gives the same ordering and significance.)""")
+scaffolding is the larger lever. (Recall this is benchmark-**adjusted** — benchmark
+enters as a covariate so its main effect is partialled out — *not* benchmark-
+**balanced** like §1a's macro rate, which equal-weights the suites; the two are
+different routes to the same coverage-confound fix. LPM is used for interpretable
+percentage-point effects; a logit fit gives the same ordering and significance.)""")
 
 # ================================================================ SECTION 2
 md(r"""## 2 · Failure-mode indexing — do harnesses fail differently?

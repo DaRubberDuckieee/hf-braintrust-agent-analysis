@@ -1,3 +1,46 @@
+# Evaluation Card: Agent Trace Success Scoring
+
+## What is evaluated?
+This evaluation scores 1,780 of 1,781 agent execution traces from
+`Exgentic/agent-llm-traces`, covering SWE-bench, AppWorld, BrowseCompPlus,
+and TAU2 Airline/Retail/Telecom tasks. Each unit is one full agent rollout.
+
+## What is the metric?
+`task_success` is a binary LLM-judge score estimating whether the agent completed
+the task from the visible trace. It is not the official hidden benchmark score.
+
+## How was it scored?
+Each trace was judged from the task, final conversation, tool calls, tool outputs,
+and final response. GPT-4.1 judged most runs; GPT-4o judged GPT-4.1 agent runs.
+The judge used benchmark-specific rubrics and returned success, confidence, and
+short reasoning.
+
+## Key results
+- 1,780 / 1,781 runs scored.
+- Overall judged success: ~64%.
+- Harness choice explains far more variation than model choice.
+- Open-weight models are competitive on SWE-bench-style coding tasks.
+- No model/harness is universally best across all task families.
+- Low token usage can indicate efficiency or premature failure.
+- Coding failures tend to thrash; support-task failures tend to give up early.
+
+## Reliability
+- Strongest: SWE-bench, because diffs and tests are visible.
+- Medium: AppWorld and TAU2, because hidden state/rubrics are unavailable.
+- Weakest: BrowseCompPlus, because no gold answer is visible.
+
+## Main limitations
+This is a proxy evaluation, not official benchmark grading. Results are sensitive
+to judge quality, benchmark coverage, harness choice, and task mix. Some cells are
+small, and SWE-bench may be affected by public-data contamination.
+
+## Best use
+Use this evaluation to compare agent harnesses, inspect failure modes, and study
+cost-versus-success tradeoffs. Do not use it as a standalone replacement for
+official benchmark scores.
+
+---
+
 # Agent Traces: What Actually Matters
 
 We got 1,781 real agent traces from HuggingFace, ran them through Braintrust, scored them, and learned what separates agents that actually work from agents that look impressive but fail.
@@ -215,6 +258,10 @@ are named under each panel title** — note Claude, Gemini, and DeepSeek share o
 `appworld`, so those report cards are an appworld-only read, while gpt-4.1 spans two
 τ²-bench suites.*
 
+> **Some takeaways:** For coding tasks, `claude_code` performs better than other
+> harnesses. However, with DeepSeek-V3.2 the ceiling behavior of `smolagents_code`
+> meets that of `claude_code`.
+
 ---
 
 ## 4. The test matrix — what ran where (and why confounds matter)
@@ -257,6 +304,10 @@ is flattered by an easy task mix — the exact loophole stratifying closes.
 *Bars = pooled rate (±Wilson 95% CI); diamonds = benchmark-balanced rate. Hatched
 bars / red suite-counts ran fewer than 3 suites — not cross-comparable. A big bar-to-
 diamond gap is the confound made visible.*
+
+> **Some takeaways:** Across the configs that *can* be compared (≥3 suites, with
+> benchmark balancing), the `claude_code` harness is performing better — Claude (73%)
+> and Gemini (71%) lead the gpt-4.1 harnesses (61% / 61% / 28%).
 
 ---
 
@@ -496,6 +547,11 @@ on it (±Wilson 95%), ranked by Δ = best−worst harness. The harness moves suc
 to 81 points on the same model + suite (appworld / Kimi-K2.5: 92% smolagents → 12%
 tool_calling).*
 
+> **Some takeaways:** The harness winner flips by task. `smolagents_code` tops
+> appworld/Kimi and `claude_code` tops both swebench panels — but on conversational
+> suites it's mixed: `claude_code` is near the bottom on tau2_telecom (gpt-4.1, 18% —
+> only `openai_solo` lower), even though it *tops* tau2_retail (93%).
+
 ---
 
 ## 7b. Reliability — the dependable workhorses vs the gamblers
@@ -513,6 +569,15 @@ same per-suite cells, a config can't buy its way rightward by running easy tasks
 `claude_code` configs (DeepSeek, Kimi) sit in the reliable corner alongside Claude
 Opus; the gpt-4.1 configs scatter high on the spread axis.*
 
+> **Some takeaways:** *Caveat — the balancing is imperfect:* the open-weight configs
+> here are scored over only two coding/agentic suites (appworld + swebench), not all
+> six, so their macro isn't strictly comparable to the full-coverage configs. With
+> that said, `smolagents_code` with DeepSeek-V3.2 and Kimi-K2.5 — which were mostly
+> tested on coding tasks — are both highly reliable *and* highly successful (high
+> macro, low cross-task spread). Among the full-six-suite configs, `claude_code ·
+> claude-opus-4-5` (73%) does perform better than `claude_code · gemini-3-pro` (71%),
+> but with a slightly more erratic nature (std 0.27 vs 0.24).
+
 The quadrant compresses each config to one spread number — this heatmap is the
 receipt. Scan a row: an all-green row is a genuine generalist; a single red cell in
 an otherwise green row is the suite where that config will burn you in production.
@@ -521,6 +586,12 @@ an otherwise green row is the suite where that config will burn you in productio
 
 *Grey = <5 tasks (too thin). `claude_code · claude-opus-4-5` is the textbook gambler —
 100% on swebench but 26% on appworld. The top open-weight rows are tight and green.*
+
+> **Some takeaways:** This is the per-suite receipt behind the quadrant. The two full
+> rows expose the gamblers: `claude_code · claude-opus-4-5` is the textbook case —
+> 100% on swebench but 26% on appworld — and `claude_code · gemini-3-pro` drops to 33%
+> on telecom. The open-weight rows are short (only appworld + swebench) but tight and
+> green.
 
 ---
 
@@ -566,6 +637,25 @@ A single "cap tokens at 2M" rule helps coding but breaks customer service agents
 held fixed. Right: how much of the variation in success each knob explains — harness
 far outweighs model.*
 
+> **Some takeaways:** The biggest determinant of agent success is the benchmark
+> itself — in plain terms, the kind of task you ask the agent to do. Coding, browsing,
+> multi-app workflows, and customer-support tasks have very different difficulty
+> profiles.
+>
+> But after controlling for benchmark, the harness matters much more than the model.
+> A harness is the agent scaffold around the model: it decides how tools are
+> presented, how model outputs are parsed, how actions are executed, how errors are
+> handled, and when the agent stops.
+>
+> The harness effects are directionally clear. `claude_code` and `smolagents_code`
+> both improve performance, likely because they give the model richer agent loops:
+> `claude_code` uses Claude's native agent-style interaction pattern, while
+> `smolagents_code` lets the model write and execute code to call tools. In contrast,
+> `tool_calling_with_shortlisting` appears to undercut performance, suggesting that
+> narrowing the available tool set can remove useful options or add routing mistakes.
+> `openai_solo`, the minimal scaffold, is also weak, which reinforces the point that
+> the model alone is not the agent.
+
 <!-- TODO: The regression wouldn't exist without Braintrust
 With raw HF traces:
 - You'd compute one-way breakdowns: avg success by harness, avg success by model
@@ -591,6 +681,14 @@ in the model, each harness coefficient is its effect *holding the suite mix and 
 fixed* — the coverage-adjusted number the raw averages can't give. `tool_calling` is
 the reference, so every coefficient reads as "points above `tool_calling`, all else
 equal"; `claude_code` lands at **+0.28 (95% CI clears 0)**.
+
+**Adjusted ≠ balanced.** This is *not* the benchmark-**balanced (macro)** rate used
+in the reliability plots above. There, each config's per-suite rates are averaged
+with **equal weight per suite**. Here, benchmark is a **covariate** that *partials
+out* its main effect, but every rollout still counts **once** — suites with more
+tasks pull the fit harder, and we do not re-weight them to equal size. Both kill the
+same coverage confound by different means: the macro rate **re-weights**, the
+regression **adjusts**.
 
 "~7× more" is **incremental R²** — the extra variance each factor explains when added
 *on top of the other two*: harness **5.3%**, model **0.7%**, benchmark **12.7%**. This
@@ -640,6 +738,11 @@ tiny:
 not a failure signal). Right: token usage per failed run — `claude_code` failures
 have a huge upper tail (thrashing), others stay lean.*
 
+> **Some takeaways:** Failed runs thrash — there's some of it with `tool_calling`, but
+> a **lot** more with `claude_code` (median ~0.8M tokens, tail past 3.7M). (Caveat:
+> this is pooled across suites, so part of `claude_code`'s tail is just that it ran
+> the token-heavy coding/browse suites — the per-benchmark view below isolates it.)
+
 But token usage is **dominated by the benchmark** (a swebench run dwarfs a tau2 one),
 so the pooled view partly ranks harnesses by which suites they ran. Holding the
 benchmark fixed isolates each harness's own burn profile — and the thrash/give-up
@@ -651,6 +754,13 @@ tokens; on tau2 they barely spend any (note the k-scale axes).
 *Each panel fixes the benchmark (cells with ≥15 failures). Coding suites (top, M-scale)
 vs conversational suites (bottom, k-scale) — failure means thrashing in one and giving
 up in the other.*
+
+> **Some takeaways:** Holding the suite fixed (mind the wildly different y-scales —
+> appworld/swebench are M-scale, tau2_airline ~k-scale, telecom ~100k) confirms two
+> things: the thrash-vs-give-up split is real (coding suites burn millions per failed
+> run, tau2 failures burn almost nothing), and the harness that thrashes most flips by
+> suite — `claude_code` on appworld (~4.5M median), but `smolagents_code` on swebench
+> (~3.1M, above claude_code's ~0.9M).
 
 The *kind* of failure differs too. Bucketing each failed run into a dominant mode
 (within a fixed benchmark) shows tau2 failures are almost entirely **silent wrong
