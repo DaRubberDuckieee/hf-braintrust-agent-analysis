@@ -1339,6 +1339,23 @@ df.groupby("model").agg(n=("success", "size"), mean_tok=("total_tokens", "mean")
                         mean_usd=("cost_usd", "mean"), succ=("success", "mean")).round(2)
 ''')
 
+md(r"""### Two cost metrics — read this first
+
+The plots below use two different cost numbers. They are **not** the same, and the gap between
+them is the whole point.
+
+| Metric | Definition | What it answers |
+|---|---|---|
+| **Cost per task** | total \$ spent ÷ **all** runs (wins *and* losses) = mean \$/run | "What does one attempt cost on average?" |
+| **Cost per success** | total \$ spent ÷ **successful** runs = (cost per task) ÷ (success rate) | "What do I pay to get one task actually *done* — including paying for the failed attempts?" |
+
+So `cost per success = cost per task ÷ success rate`. A config that succeeds 1-in-6 pays for
+~6 attempts per win, so its cost-per-success is ~6× its cost-per-task; a 90%-success config
+barely differs between the two. **Neither is per-benchmark** — both pool over every task a
+config ran (one number per config). That's fine within a config but mixes suites across
+configs, so the headline cost-per-success (4b) inherits the benchmark-mix confound; **4d**
+fixes that by recomputing it *within each benchmark*.""")
+
 md(r"""### 4a · The cost–quality frontier (their plot, with the Pareto set marked)
 
 This is the Open Agent Leaderboard's headline view — every config placed by **quality**
@@ -1463,6 +1480,60 @@ sns.despine(ax=ax)
 plt.tight_layout(); plt.show()
 ''')
 
+md(r"""### 4d · Cost per success, **within each benchmark** (apples-to-apples)
+
+4b's cost-per-success pools over whatever suites a config ran, so a config that mostly ran the
+cheap `tau2` tasks looks cheaper than one that ran token-heavy `swebench` — independent of the
+harness. This holds the **benchmark fixed**: each panel is one suite, and within it every
+config faces the same task type, so `total $ ÷ successes` is now a clean comparison. We split
+the suites into the **coding / agentic** family (swebench, appworld, browse — high token
+volume) and the **conversational τ²** family (airline, retail, telecom), since they live on
+very different cost scales. This is the honest test of "does open *actually* cost less per
+solved task," and of which harness wins once you're paying per outcome on a given workload.""")
+
+code(r'''CODING = ["swebench", "appworld", "browsecompplus"]
+CONV   = ["tau2_airline", "tau2_retail", "tau2_telecom"]
+rows = []
+for (b, c), sub in df.groupby(["benchmark", "config"]):
+    n, ns = len(sub), int(sub.success.sum())
+    if n >= 10 and ns > 0:                       # enough runs on this suite, and ≥1 success
+        rows.append({"benchmark": b, "config": c, "succ": sub.success.mean(),
+                     "usd_success": sub.cost_usd.sum() / ns})
+cb = pd.DataFrame(rows)
+cmap = plt.cm.RdYlGn
+
+def cps_figure(group, title, sub_caption):
+    benches = [b for b in group if b in set(cb.benchmark)]
+    counts = [max((cb.benchmark == b).sum(), 2) for b in benches]   # rows ∝ #configs
+    fig, axes = plt.subplots(len(benches), 1, squeeze=False,
+                             figsize=(13, 0.42 * sum(counts) + 1.0 * len(benches) + 0.6),
+                             gridspec_kw={"height_ratios": counts})
+    axes = axes[:, 0]
+    for ax, b in zip(axes, benches):
+        s = cb[cb.benchmark == b].sort_values("usd_success").reset_index(drop=True)
+        ax.barh(range(len(s)), s.usd_success, color=[cmap(v) for v in s.succ],
+                height=0.72, zorder=3, edgecolor="white")
+        ax.set_yticks(range(len(s))); ax.set_yticklabels(s.config, fontsize=8.5)
+        ax.set_xscale("log")
+        for y, (_, r) in enumerate(s.iterrows()):
+            ax.text(r.usd_success * 1.10, y, f"${r.usd_success:,.2f}  ·  {r.succ:.0%}",
+                    va="center", ha="left", fontsize=8, color="#333333")
+        ax.invert_yaxis()                              # cheapest-per-success on top
+        ax.set_xlim(right=s.usd_success.max() * 3.4)
+        ax.xaxis.set_major_formatter(mticker.FuncFormatter(
+            lambda v, _: f"${v:,.2f}" if v < 10 else f"${v:,.0f}"))
+        ax.set_title(b, loc="left", fontsize=11, fontweight="semibold")
+        sns.despine(ax=ax, left=True); ax.tick_params(left=False)
+    fig_title(fig, title, sub_caption)
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+
+SUB = ("suite held fixed · bar colour = success rate (red → green) · "
+       "$ = LiteLLM rates × measured output share · configs with ≥10 runs · cheapest on top")
+cps_figure(CODING, "Cost per successful task — coding / agentic suites", SUB)
+cps_figure(CONV, "Cost per successful task — conversational τ² suites", SUB)
+plt.show()
+''')
+
 md(r"""**Cost takeaways (building on the Open Agent Leaderboard).**
 
 - **Pick on cost *per success*, not cost per task.** The cheapest-per-task configs (minimal
@@ -1535,7 +1606,7 @@ PLOT_FILES = [
     "06_1e.png", "07_1f.png", "08_1g.png", "09_1h.png", "10_2a.png",
     "11_2a_2.png", "12_2b.png", "13_2b_2.png", "14_2c.png",
     "15_3a.png", "16_3b.png", "17_3c.png",
-    "18_4a.png", "19_4b.png", "20_4c.png",
+    "18_4a.png", "19_4b.png", "20_4c.png", "21_4d.png", "22_4e.png",
 ]
 
 

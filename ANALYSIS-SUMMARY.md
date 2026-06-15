@@ -806,6 +806,20 @@ output is only ~1–11% of billed tokens). **So the $ here aren't a guess** — 
 rates on exact token counts, accurate to a few percent. (Edit the `RATE`/`OUT_SHARE` tables
 for your own contract to get more org specific information.)
 
+**Two cost metrics — read this first.** The plots below use two different numbers, and the
+gap between them is the point:
+
+| Metric | Definition | Answers |
+|---|---|---|
+| **Cost per task** | total \$ ÷ **all** runs (wins *and* losses) = mean \$/run | "What does one attempt cost on average?" |
+| **Cost per success** | total \$ ÷ **successful** runs = (cost per task) ÷ (success rate) | "What do I pay to get one task actually *done*, including paying for the failed attempts?" |
+
+So `cost per success = cost per task ÷ success rate`. A config that succeeds 1-in-6 pays for
+~6 attempts per win (≈6× its per-task cost); a 90%-success config barely differs. **Neither is
+per-benchmark** — both pool over *every task a config ran* (one number per config), which mixes
+suites across configs. The pooled cost-per-success below is the quick view; the
+**per-benchmark** version (last plot) is the apples-to-apples one.
+
 **The deployable frontier (their plot, with the Pareto set drawn).** Every config placed by
 quality (benchmark-balanced macro success) against cost (avg $/task, log scale).
 ![Cost vs quality frontier: benchmark-balanced success vs average cost per task](out/plots/18_4a.png)
@@ -840,6 +854,35 @@ pattern). The yellow band is the leaderboard's pooled +20–54%. **Ops implicati
 "cap abnormally expensive runs" guardrail catches coding thrash but misses conversational
 give-up, where the *cheap, short* run is the failure — budget alarms need per-task-family
 thresholds.*
+
+**Cost per success, within each benchmark (apples-to-apples).** The cost-per-success plot
+above pools over whatever suites each config ran, so it inherits the benchmark mix. Holding
+the suite fixed is the honest test of "is open *really* cheaper per solved task." We split it
+by task family, since coding/agentic and conversational suites live on very different cost
+scales — and the answer flips between them.
+
+*Coding / agentic suites — open wins.* The open-cheaper result **survives** holding the suite
+fixed, so it isn't a coverage artifact.
+
+![Cost per successful task, coding/agentic suites (swebench, appworld, browse), faceted](out/plots/21_4d.png)
+
+*On **swebench**, `claude_code · kimi-k2.5` costs **$0.73/success** (94%) and `· deepseek-v3.2`
+**$1.27** (96%) vs closed `· claude-opus` **$4.28** (100%) and `· gemini-3-pro` **$4.97** (87%).
+On **appworld** the gap is 1–2 orders of magnitude: `smolagents_code · kimi-k2.5`
+**$0.40/success** (92%) vs `claude_code · claude-opus` **$84.33** (26%) and
+`tool_calling · claude-opus` **$75.35** (14%) — closed loses twice, pricier per token *and*
+failing more.*
+
+*Conversational τ² suites — cheap closed wins.* Here open-weight models never ran (only
+`gpt-4.1`, Claude, and Gemini did), and the story inverts:
+
+![Cost per successful task, conversational tau2 suites (airline, retail, telecom), faceted](out/plots/22_4e.png)
+
+*The cheap `gpt-4.1` configs dominate cost-per-success — on **tau2_retail**, `claude_code` /
+`tool_calling` / `smolagents_code · gpt-4.1` all hit **$0.02–0.03/success at 90%+**, versus
+`claude_code · claude-opus` **$1.95** (95%) and `· gemini-3-pro` **$0.75** (82%). So
+"pick the cheapest model that clears the bar" lands on a *different* model per task family:
+open-weight for coding, `gpt-4.1` for conversational support.*
 
 > **Cost bottom line:** choose configs on **cost per success**, not cost per task; at LiteLLM
 > rates open-weight models burn more tokens but cost ~8–9× less per token, so they **beat**
