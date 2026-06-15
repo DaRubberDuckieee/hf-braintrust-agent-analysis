@@ -193,7 +193,7 @@ Output: 1,781 sessions → ~50k spans in the `Hugging Face topics` project.
 ## 1c. 🆕!!! Braintrust Topics — the agents self-organize
 
 Before writing a single query, [**Topics**](https://www.braintrust.dev/blog/topics)
-(a new Braintrust feature, in beta) gave us a map of the dataset for free. It runs
+(a new Braintrust feature gave us a map of the dataset for free. It runs
 AI-powered clustering (UMAP + HDBSCAN + keyword extraction) over the traces and
 organizes them into named groups — no manual tagging. It ships built-in facets:
 **Task** (what the user wanted), **Issues** (how the agent misbehaved), and
@@ -794,6 +794,9 @@ success rate, the average cost **per task**, and per-benchmark breakdowns," plot
 configuration by quality and cost," and headlines two claims: **"failed runs cost 20–54%
 more than successful ones"** and that open-weight models **"only tie on cost."**
 
+See https://www.exgentic.ai/
+
+
 Our export carries exact `total_tokens` (the cost driver) but not a per-run input/output
 split, so we price each run with the **same source the paper uses — [LiteLLM's rates](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json)**
 (*"costs are reported using LiteLLM's pricing data"*: Opus `$5/$25`, GPT-4.1 `$2/$8`,
@@ -801,13 +804,11 @@ Gemini-3-Pro `$2/$12`, GPT-5.2 `$1.75/$14`, Kimi-K2.5 `$0.60/$3`, DeepSeek-V3.2 
 per 1M in/out), blended by each model's **measured output share** (agents are input-bound —
 output is only ~1–11% of billed tokens). **So the $ here aren't a guess** — real per-token
 rates on exact token counts, accurate to a few percent. (Edit the `RATE`/`OUT_SHARE` tables
-for your own contract.)
+for your own contract to get more org specific information.)
 
 **The deployable frontier (their plot, with the Pareto set drawn).** Every config placed by
-quality (benchmark-balanced macro success) against cost (avg $/task, log scale); the dashed
-line is the Pareto frontier.
-
-![Cost vs quality frontier: benchmark-balanced success vs average cost per task, with the Pareto frontier marked](out/plots/18_4a.png)
+quality (benchmark-balanced macro success) against cost (avg $/task, log scale).
+![Cost vs quality frontier: benchmark-balanced success vs average cost per task](out/plots/18_4a.png)
 
 *Upper-left dominates. The open-weight `claude_code` configs (DeepSeek 88%, Kimi 86%) sit on
 the frontier and push the closed `claude_code · opus`/`gemini` points off it — at these rates
