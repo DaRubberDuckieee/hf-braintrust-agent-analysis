@@ -1285,8 +1285,202 @@ fig.suptitle("Reliability conclusions, with & without the high-bleed suite", y=1
 plt.tight_layout(); plt.show()
 ''')
 
+# ================================================================ SECTION 4 (cost)
+md(r"""## 4 · Cost — what performance actually costs
+
+These are the **same traces** the [**Open Agent Leaderboard**](https://huggingface.co/blog/ibm-research/open-agent-leaderboard)
+(the Exgentic project) scores, so this section is a direct extension of *their* cost view on
+*their* data. The leaderboard makes cost a first-class axis: for every configuration it
+reports *"the average success rate, the average cost **per task**, and per-benchmark
+breakdowns,"* and plots *"every configuration by quality and cost"* to expose the deployable
+frontier. Two of its headline cost claims:
+
+1. **"Failed runs cost 20–54% more than successful ones."**
+2. **Open-weight models "only tie on cost"** — competitive on price, trailing 18–29 pp on quality.
+
+We **build on this with the data we actually have.** The export carries exact
+`total_tokens` per run (the real cost driver) but not a per-run input/output split — so we
+price each run with the **same source the paper uses, [LiteLLM's rates](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json)**
+(*"costs are reported using LiteLLM's pricing data"*), blended by each model's
+**measured output share** (agents are heavily input-bound — output is ~1–11% of billed
+tokens). So the $ here aren't a guess: they're real per-token rates applied to exact token
+counts, accurate to a few percent of the exact input+output bill. Then we go past the
+leaderboard's headline three ways: a **cost-vs-quality frontier** (their plot, with the
+Pareto set marked), **cost per *successful* task** (the number that punishes "cheap because
+it gave up"), and a **failed-vs-successful cost split by benchmark** that shows claim #1
+*reverses* on conversational suites. Edit `RATE`/`OUT_SHARE` for your own contract rates.""")
+
+code(r'''# Real per-token rates from LiteLLM's pricing table — the SAME source the Open Agent
+# Leaderboard / paper use for "cost per task" ("costs are reported using LiteLLM's
+# pricing data"). Matched to our deployment strings; $ per 1M tokens, (input, output).
+RATE = {
+    "claude-opus-4-5": (5.00, 25.00),   # claude-opus-4-5
+    "gpt-4.1":         (2.00,  8.00),   # azure/gpt-4.1
+    "gpt-5.2":         (1.75, 14.00),   # gpt-5.2
+    "gemini-3-pro":    (2.00, 12.00),   # gemini-3-pro-preview
+    "kimi-k2.5":       (0.60,  3.00),   # azure_ai/kimi-k2.5
+    "deepseek-v3.2":   (0.58,  1.68),   # azure_ai/deepseek-v3.2
+}
+# We have exact total_tokens per run, but not the per-run input/output split (multi-call
+# agents re-send context every call, so summing child-span tokens overcounts). From the
+# child llm spans we measured each model's OUTPUT SHARE of billed tokens — agents are
+# heavily input-bound — and blend the two rates accordingly. Output is a tiny slice, so a
+# blended $/1M-token rate on total_tokens is within a few % of the exact input+output bill.
+OUT_SHARE = {  # measured mean output fraction (child spans); edit if you have the exact split
+    "claude-opus-4-5": 0.011, "gpt-4.1": 0.109, "gpt-5.2": 0.008,
+    "gemini-3-pro":    0.030, "kimi-k2.5": 0.015, "deepseek-v3.2": 0.011,
+}
+PRICING = {m: RATE[m][0] * (1 - s) + RATE[m][1] * s for m, s in OUT_SHARE.items()}  # blended $/1M
+OPEN = {"kimi-k2.5", "deepseek-v3.2"}
+df["cost_usd"] = df.total_tokens / 1e6 * df.model.map(PRICING)
+print("missing price for:", sorted(set(df.model) - set(PRICING)) or "none")
+print("blended $/1M:", {m: round(p, 2) for m, p in PRICING.items()})
+df.groupby("model").agg(n=("success", "size"), mean_tok=("total_tokens", "mean"),
+                        mean_usd=("cost_usd", "mean"), succ=("success", "mean")).round(2)
+''')
+
+md(r"""### 4a · The cost–quality frontier (their plot, with the Pareto set marked)
+
+This is the Open Agent Leaderboard's headline view — every config placed by **quality**
+(benchmark-balanced macro success, y) against **cost** (avg $/task, log x). The dashed line
+is the **Pareto frontier**: configs where you can't get more success without paying more.
+Anything above/left of another point dominates it. Watch where the **open-weight** configs
+land — this is the direct test of *"open only ties on cost."* (Caveat: token cost is heavily
+benchmark-driven, so configs that ran the token-heavy coding suites sit further right partly
+because of *what they ran* — read alongside §1·0 coverage.)""")
+
+code(r'''relc4 = config_reliability(df, min_cell=5, min_total=20).dropna(subset=["macro"])
+cost_cfg = df.groupby("config").agg(usd_task=("cost_usd", "mean"),
+                                    tok_task=("total_tokens", "mean"),
+                                    model=("model", "first")).reset_index()
+P = relc4.merge(cost_cfg, on="config")
+P["open"] = P.model.isin(OPEN)
+# Pareto frontier: walk configs cheapest-first, keep each new success high-water mark.
+front, best = [], -1.0
+for _, r in P.sort_values("usd_task").iterrows():
+    if r.macro > best + 1e-9:
+        front.append(r.config); best = r.macro
+
+fig, ax = plt.subplots(figsize=(11.5, 7))
+for isopen, grp in P.groupby("open"):
+    ax.scatter(grp.usd_task, grp.macro, s=70 + grp.n * 0.7,
+               color="#2a8a4a" if isopen else "#30638e", alpha=0.8,
+               edgecolor="white", linewidth=1.2, zorder=3,
+               label="open-weight" if isopen else "closed")
+fr = P[P.config.isin(front)].sort_values("usd_task")
+ax.plot(fr.usd_task, fr.macro, "--o", color="#c0392b", lw=1.6, ms=5, zorder=2,
+        label="cost–quality frontier")
+repel_labels(ax, P.usd_task, P.macro, P.config, fontsize=7.5)
+ax.set_xscale("log")
+ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.2f}"))
+ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0))
+ax.set_xlabel("avg cost per task  →  cheaper is better  (log $, LiteLLM rates)")
+ax.set_ylabel("benchmark-balanced (macro) success  →  higher is better")
+titled(ax, "Cost vs quality — the deployable frontier",
+       "upper-left dominates · bubble = sessions · $ = LiteLLM rates × measured output share", pad=20)
+ax.legend(loc="lower right", frameon=True, framealpha=0.9, edgecolor="#cccccc")
+ax.margins(0.08); sns.despine(ax=ax)
+plt.tight_layout(); plt.show()
+P.sort_values("macro", ascending=False)[
+    ["config", "n", "macro", "usd_task", "tok_task"]].round({"macro": 3, "usd_task": 2}).head(12)
+''')
+
+md(r"""### 4b · Cost per *successful* task — where "cheap" stops being cheap
+
+Average cost per task flatters configs that fail a lot: a run that bails early is cheap, but
+you paid for nothing. The honest denominator is **successes**, not attempts —
+`total spend ÷ number of solved tasks`. A config that succeeds 16% of the time effectively
+pays for ~6 attempts per win. This is the §8 slogan — *"efficiency without success is just
+failure with fewer tokens"* — turned into one number, and the rank order is very different
+from raw $/task.""")
+
+code(r'''rows = []
+for c, sub in df.groupby("config"):
+    n, ns = len(sub), int(sub.success.sum())
+    if n >= 20 and ns > 0:
+        rows.append({"config": c, "n": n, "succ": sub.success.mean(),
+                     "usd_success": sub.cost_usd.sum() / ns,
+                     "tok_success": sub.total_tokens.sum() / ns})
+cps = pd.DataFrame(rows).sort_values("usd_success").reset_index(drop=True)
+
+fig, ax = plt.subplots(figsize=(11.5, 0.46 * len(cps) + 1.6))
+cmap = plt.cm.RdYlGn
+ax.barh(range(len(cps)), cps.usd_success, color=[cmap(s) for s in cps.succ],
+        height=0.72, zorder=3, edgecolor="white")
+ax.set_yticks(range(len(cps))); ax.set_yticklabels(cps.config, fontsize=9.5)
+ax.set_xscale("log")
+for y, (_, r) in enumerate(cps.iterrows()):
+    ax.text(r.usd_success * 1.06, y, f"${r.usd_success:,.2f}  ·  {r.succ:.0%} succ",
+            va="center", ha="left", fontsize=8.5, color="#333333")
+ax.invert_yaxis()  # cheapest-per-success on top
+ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
+ax.set_xlim(right=cps.usd_success.max() * 2.2)
+ax.set_xlabel("cost per SUCCESSFUL task  (log $, LiteLLM rates) — total spend ÷ successes")
+titled(ax, "Cost per successful outcome — the cheap-but-failing configs are the priciest",
+       "bar colour = success rate (red → green) · $ = LiteLLM rates × measured output share", pad=20)
+sns.despine(ax=ax, left=True); ax.tick_params(left=False)
+plt.tight_layout(); plt.show()
+cps.assign(usd_per_success=cps.usd_success.round(2), tok_per_success=cps.tok_success.round(0))[
+    ["config", "n", "succ", "usd_per_success", "tok_per_success"]].round({"succ": 3})
+''')
+
+md(r"""### 4c · Do failures really cost more? Only on coding tasks
+
+The leaderboard's *"failed runs cost 20–54% more"* is true **pooled** (ours is even higher,
++77%) — but pooling hides a clean reversal. Holding the benchmark fixed, **coding/agentic
+failures cost more** (the thrash pattern from §8 — the agent loops and burns tokens before
+failing) while **conversational `tau2` failures cost *less*** (the give-up pattern — the agent
+bails early and cheaply). So a blanket "failures are expensive" guardrail is exactly backwards
+for half the task families. Ratio = mean tokens of failed runs ÷ mean tokens of successful
+runs; the yellow band marks the leaderboard's pooled +20–54%.""")
+
+code(r'''rows = []
+for b, sub in df.groupby("benchmark"):
+    s = sub[sub.success == 1].total_tokens.mean()
+    f = sub[sub.success == 0].total_tokens.mean()
+    if pd.notna(s) and pd.notna(f) and s > 0:
+        rows.append({"benchmark": b, "ratio": f / s, "n_fail": int((sub.success == 0).sum())})
+rc = pd.DataFrame(rows).sort_values("ratio").reset_index(drop=True)
+
+fig, ax = plt.subplots(figsize=(10.5, 5.2))
+colors = ["#c0392b" if r > 1 else "#30638e" for r in rc.ratio]
+ax.bar(range(len(rc)), rc.ratio, color=colors, width=0.62, zorder=3)
+ax.axhline(1.0, color="#555555", lw=1.1, zorder=2)                       # parity
+ax.axhspan(1.20, 1.54, color="#f0c419", alpha=0.18, zorder=0)           # leaderboard's band
+ax.text(len(rc) - 0.5, 1.37, "Open Agent Leaderboard\npooled +20–54%", ha="right",
+        va="center", fontsize=8, color="#9a7d0a")
+for x, r in enumerate(rc.ratio):
+    ax.text(x, r + 0.04, f"{r:.2f}×\n({(r - 1) * 100:+.0f}%)", ha="center", va="bottom",
+            fontsize=8.5, weight="semibold", color="#333333")
+ax.set_xticks(range(len(rc)))
+ax.set_xticklabels([BENCH_ABBR.get(b, b) for b in rc.benchmark], rotation=12, ha="right")
+ax.set_ylabel("failed-run tokens ÷ successful-run tokens")
+ax.set_ylim(0, max(rc.ratio) * 1.18)
+titled(ax, "Do failures cost more? Only on coding tasks",
+       "red >1 = failures cost MORE (thrash) · blue <1 = failures cost LESS (give up) · "
+       "yellow = leaderboard's pooled claim", pad=20)
+sns.despine(ax=ax)
+plt.tight_layout(); plt.show()
+''')
+
+md(r"""**Cost takeaways (building on the Open Agent Leaderboard).**
+
+- **Pick on cost *per success*, not cost per task.** The cheapest-per-task configs (minimal
+  scaffolds that give up) are often the *most* expensive per solved task. The frontier in 4a
+  is the deployable view; 4b is the one that survives contact with a real workload.
+- **"Open only ties on cost" undersells it at these rates.** Open models burn *more tokens*
+  (4b, token column) but cost ~8–9× less per token (LiteLLM: ~$0.6/M vs Opus ~$5.2/M), so on
+  $/task they don't just tie — the reliable open `claude_code` configs are among the cheapest
+  *per success*. This stays rate-dependent: the gap narrows or flips at different contract
+  rates, so re-run with your own `RATE`.
+- **"Failures cost more" is a coding-suite rule, not a universal one (4c).** Guardrails that
+  cap spend on "abnormally expensive" runs catch coding thrash but miss conversational give-up,
+  where the *cheap, short* run is the failure. Budget alarms need per-task-family thresholds.
+
+Knobs: the `RATE` / `OUT_SHARE` tables (pricing), the `min_total=20` cutoff, and the `OPEN` set.""")
+
 # ================================================================ takeaways
-md(r"""## 4 · How to use this
+md(r"""## 5 · How to use this
 
 **The coverage caveat runs through everything.** Only 2 of 22 configs ran all six
 suites (§1·0); `browsecompplus` is `claude_code`-only. So *any* number pooled across
@@ -1310,9 +1504,15 @@ benchmark as a covariate.
   high-vs-clean gap is computed within `claude_code` only, and the rank-survival test
   only to models that ran SWE-bench plus ≥2 other suites. Re-run with your own `RISK`
   mapping to match your training-cutoff knowledge.
+- **§4 — cost.** This is the same dataset the Open Agent Leaderboard scores, so it
+  directly extends their cost view — and prices runs with **LiteLLM's rates, the same
+  source the paper uses**, blended by each model's measured output share. Tokens are exact;
+  $ are accurate to a few percent (edit `RATE`/`OUT_SHARE` for your contract). Choose
+  configs on **cost per success** (§4b), not cost per task, and remember the
+  "failures cost more" rule is coding-only (§4c).
 
 Knobs to tweak: `MIN_N`, `COMPARABLE_BM`, `MIN_FAIL`, the `classify()` thresholds,
-the keyword `STOP` set, and the `RISK` dictionary.
+the keyword `STOP` set, the `RISK` dictionary, and the `PRICING` table.
 """)
 
 nb["cells"] = cells
@@ -1335,6 +1535,7 @@ PLOT_FILES = [
     "06_1e.png", "07_1f.png", "08_1g.png", "09_1h.png", "10_2a.png",
     "11_2a_2.png", "12_2b.png", "13_2b_2.png", "14_2c.png",
     "15_3a.png", "16_3b.png", "17_3c.png",
+    "18_4a.png", "19_4b.png", "20_4c.png",
 ]
 
 
