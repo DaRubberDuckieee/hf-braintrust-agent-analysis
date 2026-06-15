@@ -785,6 +785,69 @@ success measure was necessary.
 
 ---
 
+## 9. Cost — what performance actually costs
+
+These are the **same traces** the [Open Agent Leaderboard](https://huggingface.co/blog/ibm-research/open-agent-leaderboard)
+(the Exgentic project) scores, so this section extends *their* cost view on *their* data.
+The leaderboard makes cost a first-class axis — for every config it reports "the average
+success rate, the average cost **per task**, and per-benchmark breakdowns," plots "every
+configuration by quality and cost," and headlines two claims: **"failed runs cost 20–54%
+more than successful ones"** and that open-weight models **"only tie on cost."**
+
+Our export carries exact `total_tokens` (the cost driver) but not a per-run input/output
+split, so we price each run with the **same source the paper uses — [LiteLLM's rates](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json)**
+(*"costs are reported using LiteLLM's pricing data"*: Opus `$5/$25`, GPT-4.1 `$2/$8`,
+Gemini-3-Pro `$2/$12`, GPT-5.2 `$1.75/$14`, Kimi-K2.5 `$0.60/$3`, DeepSeek-V3.2 `$0.58/$1.68`
+per 1M in/out), blended by each model's **measured output share** (agents are input-bound —
+output is only ~1–11% of billed tokens). **So the $ here aren't a guess** — real per-token
+rates on exact token counts, accurate to a few percent. (Edit the `RATE`/`OUT_SHARE` tables
+for your own contract.)
+
+**The deployable frontier (their plot, with the Pareto set drawn).** Every config placed by
+quality (benchmark-balanced macro success) against cost (avg $/task, log scale); the dashed
+line is the Pareto frontier.
+
+![Cost vs quality frontier: benchmark-balanced success vs average cost per task, with the Pareto frontier marked](out/plots/18_4a.png)
+
+*Upper-left dominates. The open-weight `claude_code` configs (DeepSeek 88%, Kimi 86%) sit on
+the frontier and push the closed `claude_code · opus`/`gemini` points off it — at these rates
+open doesn't just "tie on cost," it dominates the frontier. Caveat: token cost is
+benchmark-driven, so configs that ran the token-heavy coding suites sit further right partly
+because of *what they ran*.*
+
+**Cost per *successful* task — where "cheap" stops being cheap.** Average cost per task
+flatters configs that fail a lot (a run that bails early is cheap, but you paid for nothing).
+The honest denominator is successes: `total spend ÷ solved tasks`.
+
+![Cost per successful task per config, log dollar scale, bars coloured by success rate](out/plots/19_4b.png)
+
+*`tool_calling · claude-opus-4-5` costs **$64.82 per success** (16% success) and
+`openai_solo · gemini-3-pro` **$25.27** — versus the open-weight `claude_code` configs at
+**$0.86 (Kimi) – $1.45 (DeepSeek) per success** (82–88% success), which *beat* closed
+`claude_code · claude-opus` ($6.19) and `· gemini-3-pro` ($3.09). Cheap-per-task ≠
+cheap-per-outcome; this is "efficiency without success is just failure with fewer tokens"
+as a single number.*
+
+**Do failures really cost more? Only on coding.** The leaderboard's "+20–54%" is true pooled
+(ours is +77%) — but holding the benchmark fixed, the rule **reverses**.
+
+![Failed-run vs successful-run token ratio per benchmark, with the leaderboard's pooled band shaded](out/plots/20_4c.png)
+
+*Coding/agentic failures cost **more** (swebench +56%, browse +136% — the thrash pattern),
+but conversational `tau2` failures cost **less** (airline −80%, telecom −58% — the give-up
+pattern). The yellow band is the leaderboard's pooled +20–54%. **Ops implication:** a
+"cap abnormally expensive runs" guardrail catches coding thrash but misses conversational
+give-up, where the *cheap, short* run is the failure — budget alarms need per-task-family
+thresholds.*
+
+> **Cost bottom line:** choose configs on **cost per success**, not cost per task; at LiteLLM
+> rates open-weight models burn more tokens but cost ~8–9× less per token, so they **beat**
+> closed on cost-per-success here — "only ties on cost" understates it (though this stays
+> rate-dependent — re-run with your contract rates); and "failures cost more" is a
+> coding-suite rule, not a universal one.
+
+---
+
 ## Caveats to publish with any of this
 
 - `task_success` is an **LLM-judge proxy** of the agent's own verification, not the
