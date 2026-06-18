@@ -157,9 +157,9 @@ def session_to_spans(
 
     failures = detect_failures(spans_raw, keys)
     if failures.has_errors:
+        examples = f" Examples: {'; '.join(failures.sample_errors)}" if failures.sample_errors else ""
         error_summary = (
-            f"[{failures.tool_error_count} tool error(s) detected. "
-            f"Examples: {'; '.join(failures.sample_errors)}]"
+            f"[{failures.error_span_count} error span(s); {failures.tool_error_count} tool error(s) detected.{examples}]"
         )
         root_output = {"role": "assistant", "content": final_out["content"], "issues": error_summary}
         root_error = error_summary
