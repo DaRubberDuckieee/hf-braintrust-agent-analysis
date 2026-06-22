@@ -70,30 +70,45 @@ import matplotlib.patheffects as pe
 import seaborn as sns
 
 warnings.filterwarnings("ignore")
+
+# ── Braintrust brand palette ──────────────────────────────────────────────────
+BT_BLUE        = "#2C1FEB"
+BT_BLUE_ACCENT = "#3A77EB"
+BT_BLACK       = "#000000"
+BT_ICE_GREY    = "#D8DEEE"
+BT_CONCRETE    = "#504F4F"
+BT_PINK        = "#F5AFD1"
+BT_GREEN       = "#14382D"
+BT_ROSE        = "#651D31"
+
+from matplotlib.colors import LinearSegmentedColormap
+BT_CMAP = LinearSegmentedColormap.from_list("bt_blue", [BT_ICE_GREY, BT_BLUE_ACCENT, BT_BLUE])
+BT_HEAT = LinearSegmentedColormap.from_list("bt_heat", [BT_ICE_GREY, BT_BLUE_ACCENT, BT_BLUE])
+
 sns.set_theme(style="whitegrid", context="notebook")
 plt.rcParams.update({
-    "figure.dpi": 120,
-    "savefig.dpi": 120,
+    "figure.dpi": 300,
+    "savefig.dpi": 300,
     "savefig.bbox": "tight",
     "figure.facecolor": "white",
     "axes.facecolor": "white",
-    "axes.edgecolor": "#666666",
+    "axes.edgecolor": BT_ICE_GREY,
     "axes.linewidth": 0.8,
-    "axes.titlesize": 13,
-    "axes.titleweight": "semibold",
-    "axes.titlepad": 10,
-    "axes.titlecolor": "#1a1a1a",
+    "axes.titlesize": 14,
+    "axes.titleweight": "bold",
+    "axes.titlepad": 12,
+    "axes.titlecolor": BT_BLACK,
     "axes.labelsize": 10.5,
-    "axes.labelcolor": "#333333",
+    "axes.labelcolor": BT_CONCRETE,
     "axes.labelpad": 6,
     "axes.spines.top": False,
     "axes.spines.right": False,
-    "grid.color": "#e8e8e8",
+    "grid.color": BT_ICE_GREY,
     "grid.linewidth": 0.8,
     "xtick.labelsize": 9.5,
     "ytick.labelsize": 9.5,
-    "xtick.color": "#555555",
-    "ytick.color": "#555555",
+    "xtick.color": BT_CONCRETE,
+    "ytick.color": BT_CONCRETE,
     "legend.fontsize": 9,
     "legend.title_fontsize": 9.5,
     "legend.frameon": False,
@@ -101,36 +116,31 @@ plt.rcParams.update({
     "figure.titlesize": 15,
     "figure.titleweight": "bold",
 })
-ANNOT = dict(fontsize=8.5, color="#222222")  # shared style for point labels
+ANNOT = dict(fontsize=8.5, color=BT_CONCRETE)
 
 
 def titled(ax, main, sub=None, pad=22):
-    # Left-aligned bold title with an optional grey sub-line stacked beneath it.
-    ax.set_title(main, loc="left", pad=pad, fontweight="semibold")
+    ax.set_title(main, loc="left", pad=pad, fontweight="bold")
     if sub:
         ax.annotate(sub, xy=(0, 1), xytext=(0, 5), xycoords="axes fraction",
-                    textcoords="offset points", fontsize=9, color="#888888", va="bottom")
+                    textcoords="offset points", fontsize=9, color=BT_CONCRETE, va="bottom")
 
 
 def fig_title(fig, main, sub=None):
-    # Figure title + grey subtitle placed with fig.text (NOT suptitle) so tight_layout
-    # doesn't reserve an empty band beneath them. Spaced by *inches* so the gap is the
-    # same at any figure height. Both sit just above the canvas; pair with a high
-    # tight_layout top (e.g. rect=[...0.97]) so panels fill the space.
     h = fig.get_figheight()
-    fig.text(0.012, 1 + 0.32 / h, main, ha="left", fontsize=14, fontweight="bold")
+    fig.text(0.012, 1 + 0.32 / h, main, ha="left", fontsize=14, fontweight="bold", color=BT_BLACK)
     if sub:
-        fig.text(0.012, 1 + 0.10 / h, sub, ha="left", fontsize=9, color="#888888")
+        fig.text(0.012, 1 + 0.10 / h, sub, ha="left", fontsize=9, color=BT_CONCRETE)
 
 
-from adjustText import adjust_text  # smart label de-collision
+from adjustText import adjust_text
 
 
-def repel_labels(ax, xs, ys, texts, fontsize=8.5, color="#222222"):
-    # Place point labels and nudge them apart so dense clusters stay legible.
+def repel_labels(ax, xs, ys, texts, fontsize=8.5, color=None):
+    color = color or BT_CONCRETE
     objs = [ax.text(x, y, t, fontsize=fontsize, color=color) for x, y, t in zip(xs, ys, texts)]
     adjust_text(objs, ax=ax,
-                arrowprops=dict(arrowstyle="-", color="#bbbbbb", lw=0.6),
+                arrowprops=dict(arrowstyle="-", color=BT_ICE_GREY, lw=0.6),
                 expand=(1.15, 1.4), force_text=(0.4, 0.6))
     return objs
 
@@ -352,21 +362,21 @@ n_suites = (cov >= 5).sum(axis=1)
 fig, ax = plt.subplots(figsize=(9, 0.42 * len(cov) + 2))
 mask = cov.isna() | (cov < 5)               # blank/thin cells -> masked
 sns.heatmap(cov, mask=mask, annot=cov.fillna(0).astype(int), fmt="d",
-            cmap="Blues", linewidths=2, linecolor="white", vmin=0,
+            cmap=BT_HEAT, linewidths=2, linecolor="white", vmin=0,
             cbar_kws={"label": "tasks run", "shrink": .6}, ax=ax,
             annot_kws={"fontsize": 8.5})
-ax.set_facecolor("#f0f0f0")                  # masked (blank/thin) cells show grey
+ax.set_facecolor(BT_ICE_GREY)                # masked (blank/thin) cells show grey
 # overlay thin-but-nonzero counts in grey so they're visible as "ran but <5"
 for yi, cfg in enumerate(cov.index):
     for xi, bm in enumerate(cov.columns):
         v = cov.loc[cfg, bm]
         if pd.notna(v) and v < 5:
             ax.text(xi + 0.5, yi + 0.5, int(v), ha="center", va="center",
-                    fontsize=7.5, color="#999999")
+                    fontsize=7.5, color=BT_CONCRETE)
 for yi, cfg in enumerate(cov.index):         # suite-coverage count on the right
     ax.text(len(cov.columns) + 0.15, yi + 0.5, f"{n_suites[cfg]}/6", va="center",
             ha="left", fontsize=8.5, weight="semibold",
-            color="#2a8a4a" if n_suites[cfg] >= 5 else "#c0392b")
+            color=BT_GREEN if n_suites[cfg] >= 5 else BT_ROSE)
 titled(ax, "Config × benchmark coverage", "cell = tasks run · grey = <5 (too thin) · right = suites covered")
 ax.set_xlabel(""); ax.set_ylabel(""); ax.tick_params(length=0)
 plt.setp(ax.get_xticklabels(), rotation=18, ha="right")
@@ -384,25 +394,25 @@ COMPARABLE_BM = 3  # configs spanning fewer suites aren't fairly cross-comparabl
 fig, ax = plt.subplots(figsize=(11.5, 0.62 * len(relc) + 2))
 # Bars = pooled (micro) rate with Wilson CI -> statistical uncertainty.
 err = np.vstack([relc.micro - relc.ci_lo, relc.ci_hi - relc.micro])
-colors = sns.color_palette("crest", as_cmap=True)(relc.macro)
+colors = BT_CMAP(relc.macro)
 for y, (_, r) in enumerate(relc.iterrows()):
     thin = r.n_benchmarks < COMPARABLE_BM
     ax.barh(y, r.micro, xerr=err[:, [y]], color=colors[y],
-            error_kw=dict(ecolor="#555555", capsize=3.5, lw=1.3), height=0.72, zorder=3,
+            error_kw=dict(ecolor=BT_CONCRETE, capsize=3.5, lw=1.3), height=0.72, zorder=3,
             alpha=0.4 if thin else 1.0, hatch="///" if thin else None,
             edgecolor="white" if thin else "none")
 ax.set_yticks(range(len(relc))); ax.set_yticklabels(relc.config, fontsize=10.5)
 # Diamonds = benchmark-balanced (macro) rate -> the mix-corrected estimate.
-ax.scatter(relc.macro, range(len(relc)), marker="D", s=62, color="#c0392b",
+ax.scatter(relc.macro, range(len(relc)), marker="D", s=62, color=BT_ROSE,
            edgecolor="white", linewidth=1, zorder=5, label="benchmark-balanced (macro)")
 for y, (_, r) in enumerate(relc.iterrows()):
     thin = r.n_benchmarks < COMPARABLE_BM
     # value labels live in a fixed right-hand column, clear of the error bars, so the
     # number reads as the bar's point estimate rather than a label on the whisker
     ax.text(1.10, y, f"{r.micro:.0%}", va="center", ha="right",
-            fontsize=10.5, weight="semibold", color="#333333")
+            fontsize=10.5, weight="semibold", color=BT_BLACK)
     ax.text(1.235, y, f"n={r.n} · {int(r.n_benchmarks)}bm", va="center", ha="right",
-            fontsize=9, color="#c0392b" if thin else "#999999",
+            fontsize=9, color=BT_ROSE if thin else BT_CONCRETE,
             weight="semibold" if thin else "normal")
 ax.set_xlim(0, 1.25)
 ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
@@ -419,11 +429,11 @@ ax.tick_params(left=False)
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 ax.legend(handles=[
-    Patch(facecolor=sns.color_palette("crest", as_cmap=True)(0.75),
+    Patch(facecolor=BT_CMAP(0.75),
           label="pooled (micro) rate ±Wilson 95% CI"),
-    Line2D([0], [0], marker="D", linestyle="none", markerfacecolor="#c0392b",
+    Line2D([0], [0], marker="D", linestyle="none", markerfacecolor=BT_ROSE,
            markeredgecolor="white", markersize=9, label="benchmark-balanced (macro) rate"),
-], loc="lower right", frameon=True, framealpha=0.92, edgecolor="#cccccc", fontsize=9)
+], loc="lower right", frameon=True, framealpha=0.92, edgecolor=BT_ICE_GREY, fontsize=9)
 plt.tight_layout()
 plt.show()
 
@@ -460,17 +470,17 @@ rel = relc[relc.n_benchmarks >= 2].copy()  # need >=2 suites for a cross-task st
 
 fig, ax = plt.subplots(figsize=(12, 8.5))
 xm = rel.macro.median(); ym = rel.cross_task_std.median()
-ax.axvline(xm, ls="--", c="#cccccc", lw=1, zorder=0)
-ax.axhline(ym, ls="--", c="#cccccc", lw=1, zorder=0)
+ax.axvline(xm, ls="--", c=BT_ICE_GREY, lw=1, zorder=0)
+ax.axhline(ym, ls="--", c=BT_ICE_GREY, lw=1, zorder=0)
 sns.scatterplot(data=rel, x="macro", y="cross_task_std", size="n",
-                hue="macro", palette="crest", sizes=(120, 800),
+                hue="macro", palette=BT_CMAP, sizes=(120, 800),
                 edgecolor="white", linewidth=1.2, legend=False, ax=ax, zorder=3)
 # Smart de-collision so the dense mid-cluster stays legible.
 repel_labels(ax, rel.macro, rel.cross_task_std, rel.config)
 ax.text(0.985, 0.04, "RELIABLE\nhigh score · consistent", transform=ax.transAxes,
-        ha="right", va="bottom", color="#2a8a4a", fontsize=11, weight="bold", linespacing=1.3)
+        ha="right", va="bottom", color=BT_GREEN, fontsize=11, weight="bold", linespacing=1.3)
 ax.text(0.015, 0.97, "ERRATIC\nlow score · inconsistent", transform=ax.transAxes,
-        ha="left", va="top", color="#c0392b", fontsize=11, weight="bold", linespacing=1.3)
+        ha="left", va="top", color=BT_ROSE, fontsize=11, weight="bold", linespacing=1.3)
 ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
 ax.set_xlabel("benchmark-balanced (macro) success  →  higher is better")
 ax.set_ylabel("cross-task std of success  →  lower is more predictable")
@@ -501,9 +511,9 @@ annot = hm.assign(lab=hm.apply(
 ).pivot(index="harness", columns="model", values="lab")
 
 fig, ax = plt.subplots(figsize=(11, 5))
-sns.heatmap(pivot, annot=annot, fmt="", cmap="RdYlGn", vmin=0, vmax=1,
+sns.heatmap(pivot, annot=annot, fmt="", cmap=BT_HEAT, vmin=0, vmax=1,
             linewidths=2, linecolor="white", cbar_kws={"label": "success rate", "shrink": .8},
-            ax=ax, annot_kws={"fontsize": 8.5, "color": "#1a1a1a"})
+            ax=ax, annot_kws={"fontsize": 8.5, "color": BT_BLACK})
 titled(ax, "Success by harness × model", "cell shows mean ± Wilson 95% half-width (n)")
 ax.set_xlabel(""); ax.set_ylabel("")
 ax.tick_params(length=0)
@@ -546,11 +556,11 @@ eta = pd.DataFrame({"factor": factors,
                     "eta_sq": [eta_sq(df, f) for f in factors]}).sort_values("eta_sq")
 
 fig, ax = plt.subplots(figsize=(9, 4.2))
-colors = ["#30638e" if f != "config" else "#9bb8d3" for f in eta.factor]
+colors = [BT_BLUE_ACCENT if f != "config" else "#9bb8d3" for f in eta.factor]
 ax.barh(eta.factor, eta.eta_sq, color=colors, height=0.62, zorder=3)
 for y, v in enumerate(eta.eta_sq):
     ax.text(v + 0.004, y, f"{v:.1%}", va="center", fontsize=10, weight="semibold",
-            color="#333333")
+            color=BT_BLACK)
 ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
 ax.set_xlim(0, max(eta.eta_sq) * 1.18)
 ax.set_xlabel("share of success variance explained (one-way η²)")
@@ -619,7 +629,7 @@ swing = (ce.groupby("model").rate.agg(["min", "max"])
                  shared=lambda d: d.index.map(shared_bms)).sort_values("swing"))
 
 hh = sorted(df.harness.unique())
-hpal = dict(zip(hh, sns.color_palette("Set2", len(hh))))
+hpal = dict(zip(hh, [BT_BLUE if i==0 else BT_BLUE_ACCENT if i==1 else BT_ICE_GREY for i in range(len(hh))]))
 models_ord = swing.sort_values("swing", ascending=False).index.tolist()
 
 ncol = 3
@@ -633,11 +643,11 @@ for i, model in enumerate(models_ord):
     err = np.vstack([sub.rate - sub.ci_lo, sub.ci_hi - sub.rate])
     ax.barh(range(len(sub)), sub.rate, xerr=err, height=0.62,
             color=[hpal[h] for h in sub.harness],
-            error_kw=dict(ecolor="#666666", capsize=3, lw=1.1), zorder=3)
+            error_kw=dict(ecolor=BT_CONCRETE, capsize=3, lw=1.1), zorder=3)
     for y, s in sub.iterrows():
         # fixed right-hand column, clear of the whiskers (see plot above)
         ax.text(1.17, y, f"{s.rate:.0%}", va="center", ha="right",
-                fontsize=9.5, weight="semibold", color="#333333")
+                fontsize=9.5, weight="semibold", color=BT_BLACK)
     ax.set_yticks(range(len(sub))); ax.set_yticklabels(sub.harness, fontsize=9.5)
     ax.set_xlim(0, 1.18); ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
     # Title names the shared suite(s) the swing is measured on — so a Δ computed on
@@ -646,7 +656,7 @@ for i, model in enumerate(models_ord):
                  fontsize=11, fontweight="semibold", pad=22)
     ax.annotate(f"shared suites: {swing.loc[model, 'shared']}", xy=(0, 1), xytext=(0, 3),
                 xycoords="axes fraction", textcoords="offset points",
-                fontsize=8.5, color="#888888", va="bottom")
+                fontsize=8.5, color=BT_CONCRETE, va="bottom")
     sns.despine(ax=ax, left=True); ax.tick_params(left=False)
 fig_title(fig, "Harness report card — same model, same suites",
           "each panel fixes the model · bar = success on the shared suites named per panel "
@@ -689,9 +699,9 @@ annot = cb_rate.copy()
 annot_lab = annot.map(lambda v: "" if pd.isna(v) else f"{v:.0%}")
 
 fig, ax = plt.subplots(figsize=(10, 0.5 * len(cb_rate) + 2))
-sns.heatmap(cb_rate, mask=mask, annot=annot_lab, fmt="", cmap="RdYlGn", vmin=0, vmax=1,
+sns.heatmap(cb_rate, mask=mask, annot=annot_lab, fmt="", cmap=BT_HEAT, vmin=0, vmax=1,
             linewidths=2, linecolor="white", cbar_kws={"label": "success rate", "shrink": .7},
-            ax=ax, annot_kws={"fontsize": 8.5, "color": "#1a1a1a"})
+            ax=ax, annot_kws={"fontsize": 8.5, "color": BT_BLACK})
 ax.set_facecolor("#f3f3f3")  # masked (thin) cells show as grey
 titled(ax, "Config × benchmark success — spotting the gamblers",
        "grey = <5 tasks (too thin) · a red cell in an otherwise green row = a brittle suite")
@@ -729,7 +739,7 @@ cells = [cbm[(cbm.benchmark == b) & (cbm.model == m)].sort_values("success_rate"
 cells.sort(key=lambda g: g.success_rate.max() - g.success_rate.min(), reverse=True)
 
 hh = sorted(df.harness.unique())
-hpal = dict(zip(hh, sns.color_palette("Set2", len(hh))))
+hpal = dict(zip(hh, [BT_BLUE if i==0 else BT_BLUE_ACCENT if i==1 else BT_ICE_GREY for i in range(len(hh))]))
 ncol = 3
 nrow = int(np.ceil(len(cells) / ncol))
 fig, axes = plt.subplots(nrow, ncol, figsize=(15, 1.45 * nrow + 1), squeeze=False)
@@ -740,11 +750,11 @@ for i, grp in enumerate(cells):
     err = np.vstack([grp.success_rate - grp.ci_lo, grp.ci_hi - grp.success_rate])
     ax.barh(range(len(grp)), grp.success_rate, xerr=err, height=0.62,
             color=[hpal[h] for h in grp.harness],
-            error_kw=dict(ecolor="#666666", capsize=2.5, lw=1), zorder=3)
+            error_kw=dict(ecolor=BT_CONCRETE, capsize=2.5, lw=1), zorder=3)
     for y, (_, s) in enumerate(grp.iterrows()):
         # fixed right-hand column, clear of the whiskers (see plots above)
         ax.text(1.19, y, f"{s.success_rate:.0%}", va="center",
-                ha="right", fontsize=9, weight="semibold", color="#333333")
+                ha="right", fontsize=9, weight="semibold", color=BT_BLACK)
     ax.set_yticks(range(len(grp))); ax.set_yticklabels(grp.harness, fontsize=8.5)
     ax.set_xlim(0, 1.20); ax.set_ylim(-0.6, len(grp) - 0.4)
     ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
@@ -826,14 +836,14 @@ fig, (axL, axR) = plt.subplots(1, 2, figsize=(15, 4.6), gridspec_kw={"width_rati
 label_x = hp.hi.max() + 0.03
 for y, (_, r) in enumerate(hp.iterrows()):
     is_ref = r.harness == "tool_calling"
-    c = "#999999" if is_ref else ("#2a8a4a" if r.coef > 0 else "#c0392b")
+    c = BT_CONCRETE if is_ref else (BT_GREEN if r.coef > 0 else BT_ROSE)
     if not is_ref:
         axL.plot([r.lo, r.hi], [y, y], color=c, lw=2, alpha=0.5, zorder=2)
     axL.scatter(r.coef, y, s=130, color=c, edgecolor="white", linewidth=1.3, zorder=3)
     tag = "(ref)" if is_ref else (f"+{r.coef:.0%}" if r.coef >= 0 else f"{r.coef:.0%}")
     axL.text(label_x, y, tag, va="center", ha="left", fontsize=9,
              weight="semibold", color=c)
-axL.axvline(0, ls="--", c="#bbbbbb", lw=1, zorder=0)
+axL.axvline(0, ls="--", c=BT_ICE_GREY, lw=1, zorder=0)
 axL.set_xlim(hp.lo.min() - 0.03, label_x + 0.10)
 axL.set_yticks(range(len(hp))); axL.set_yticklabels(hp.harness)
 axL.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
@@ -841,10 +851,10 @@ axL.set_xlabel("effect on success vs. tool_calling (pp, adjusted for model + ben
 titled(axL, "Adjusted harness effect", "linear prob. model · HC1 SEs · 95% CI", pad=20)
 sns.despine(ax=axL, left=True); axL.tick_params(left=False)
 # Right: incremental R^2 by factor
-colors = {"harness": "#30638e", "model": "#9bb8d3", "benchmark": "#cfcfcf"}
+colors = {"harness": BT_BLUE, "model": BT_BLUE_ACCENT, "benchmark": BT_ICE_GREY}
 axR.barh(incr.index, incr.values, color=[colors[f] for f in incr.index], height=0.6, zorder=3)
 for y, v in enumerate(incr.values):
-    axR.text(v + 0.003, y, f"{v:.1%}", va="center", fontsize=10, weight="semibold", color="#333")
+    axR.text(v + 0.003, y, f"{v:.1%}", va="center", fontsize=10, weight="semibold", color=BT_BLACK)
 axR.set_xlim(0, max(incr.values) * 1.2)
 axR.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
 axR.set_xlabel("incremental R²  (added on top of the other two)")
@@ -917,7 +927,7 @@ mp = counts.div(counts.sum(axis=1), axis=0)
 
 fig, ax = plt.subplots(figsize=(11, 6))
 bottom = np.zeros(len(mp))
-colors = sns.color_palette("Set2", len(modes))
+colors = [BT_BLUE, BT_BLUE_ACCENT, BT_ICE_GREY, BT_PINK]
 n_lab = fails.harness.value_counts().reindex(order)
 xpos = np.arange(len(mp))
 for c, m in zip(colors, modes):
@@ -925,7 +935,7 @@ for c, m in zip(colors, modes):
     for x, (frac, b) in enumerate(zip(mp[m].values, bottom)):
         if frac >= 0.07:  # only label visible segments
             ax.text(x, b + frac / 2, f"{frac:.0%}", ha="center", va="center",
-                    fontsize=8.5, color="#333333", weight="medium")
+                    fontsize=8.5, color=BT_BLACK, weight="medium")
     bottom += mp[m].values
 ax.set_ylabel("share of harness's failures")
 ax.set_ylim(0, 1)
@@ -964,7 +974,7 @@ nrow = int(np.ceil(len(bench_keep) / ncol))
 fig, axes = plt.subplots(nrow, ncol, figsize=(14, 3.0 * nrow + 0.5), squeeze=False)
 for ax in axes.flat:
     ax.set_visible(False)
-mode_colors = dict(zip(modes, sns.color_palette("Set2", len(modes))))
+mode_colors = dict(zip(modes, [BT_BLUE, BT_BLUE_ACCENT, BT_ICE_GREY, BT_PINK]))
 for bi, bench in enumerate(sorted(bench_keep)):
     ax = axes[bi // ncol][bi % ncol]; ax.set_visible(True)
     hs = sorted(ok[ok.benchmark == bench].harness)
@@ -978,7 +988,7 @@ for bi, bench in enumerate(sorted(bench_keep)):
         for x, (frac, b) in enumerate(zip(piv[m].values, bottom)):
             if frac >= 0.10:
                 ax.text(x, b + frac / 2, f"{frac:.0%}", ha="center", va="center",
-                        fontsize=8, color="#333333")
+                        fontsize=8, color=BT_BLACK)
         bottom += piv[m].values
     ax.set_xticks(xpos)
     ax.set_xticklabels([f"{h}\n(n={int(cell_tot[(bench, h)])})" for h in piv.index],
@@ -1005,12 +1015,13 @@ md("### 2b · Error-signal distributions by harness (failed runs)")
 code(r'''fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 short = {h: h.replace("_", "\n", 1).replace("tool_calling_with_shortlisting", "tool_calling\n+shortlist")
          for h in order}
+_bt_cat = [BT_BLUE, BT_BLUE_ACCENT, BT_ICE_GREY, BT_PINK, BT_ROSE, BT_GREEN]
 sns.boxplot(data=fails, x="harness", y="tool_error_count", order=order,
-            hue="harness", palette="Set2", legend=False, ax=axes[0],
+            hue="harness", palette=_bt_cat[:len(order)], legend=False, ax=axes[0],
             showfliers=False, linewidth=1.2, width=0.6)
 axes[0].set_title("Tool-call errors per failed run", loc="left")
 sns.boxplot(data=fails, x="harness", y="total_tokens", order=order,
-            hue="harness", palette="Set2", legend=False, ax=axes[1],
+            hue="harness", palette=_bt_cat[:len(order)], legend=False, ax=axes[1],
             showfliers=False, linewidth=1.2, width=0.6)
 axes[1].set_title("Token usage per failed run", loc="left")
 axes[1].yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v/1e6:.1f}M"))
@@ -1044,7 +1055,7 @@ nrow = int(np.ceil(len(bench_keep2) / ncol))
 fig, axes = plt.subplots(nrow, ncol, figsize=(14, 3.0 * nrow + 0.5), squeeze=False)
 for ax in axes.flat:
     ax.set_visible(False)
-hpal2 = dict(zip(sorted(fails.harness.unique()), sns.color_palette("Set2", fails.harness.nunique())))
+hpal2 = dict(zip(sorted(fails.harness.unique()), BT_CMAP([i/(fails.harness.nunique()-1) for i in range(fails.harness.nunique())])))
 for bi, bench in enumerate(bench_keep2):
     ax = axes[bi // ncol][bi % ncol]; ax.set_visible(True)
     hs = sorted(keep[keep.benchmark == bench].harness)
@@ -1109,17 +1120,17 @@ top = (lift[lift.lift > 1].sort_values("lift", ascending=False).groupby("harness
 ncol = min(3, len(focus_h))
 g = sns.catplot(data=top, kind="bar", y="term", x="lift", col="harness", col_order=focus_h,
                 col_wrap=ncol, sharey=False, sharex=False, height=3.0, aspect=1.5,
-                hue="term", palette="rocket_r", legend=False)
+                color=BT_BLUE)
 g.set_titles("{col_name}", size=11, weight="semibold")
 g.set_axis_labels("lift vs. all failures on this benchmark", "")
 for ax in g.axes.flat:
     ax.tick_params(labelsize=9)
-    ax.axvline(1, ls="--", c="#bbbbbb", lw=1, zorder=0)  # 1 = no enrichment
+    ax.axvline(1, ls="--", c=BT_ICE_GREY, lw=1, zorder=0)  # 1 = no enrichment
 g.fig.suptitle(f"Distinctive judge-reasoning terms per harness — on {FOCUS_BM}", y=1.07,
                fontsize=14, weight="bold")
 g.fig.text(0.5, 1.015, f"failed runs on {FOCUS_BM} only · harnesses with ≥{MIN_FAIL} failures · "
            "lift vs. this benchmark's failure base",
-           ha="center", fontsize=9, color="#888888")
+           ha="center", fontsize=9, color=BT_CONCRETE)
 g.fig.subplots_adjust(top=0.90, hspace=0.45)
 plt.show()
 print(f"focus benchmark: {FOCUS_BM} · harnesses: {focus_h}")
@@ -1191,10 +1202,10 @@ code(r'''if len(gap):
     gm["suite"] = gm["suite"].map({"high_risk_success": "SWE-bench (high bleed)",
                                    "clean_success": "BrowseComp+ (clean)"})
     sns.barplot(data=gm, x="model", y="rate", hue="suite",
-                palette=["#d1495b", "#30638e"], ax=ax, width=0.7, zorder=3)
+                palette=[BT_ROSE, BT_BLUE_ACCENT], ax=ax, width=0.7, zorder=3)
     for c in ax.containers:
         ax.bar_label(c, labels=[f"{v*100:.0f}%" for v in c.datavalues],
-                     fontsize=8.5, color="#444444", padding=2)
+                     fontsize=8.5, color=BT_BLACK, padding=2)
     titled(ax, "High-bleed vs. clean success per model",
            "large gap → score may be inflated by memorisation")
     ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0))
@@ -1243,16 +1254,16 @@ display(comp.round(3))
 # Slope/bump chart of rank change
 fig, ax = plt.subplots(figsize=(9, 6))
 bump = comp.dropna(subset=["rank_all", "rank_no_high"])
-pal = dict(zip(bump.index, sns.color_palette("crest", len(bump))))
+pal = dict(zip(bump.index, [BT_CMAP(i/(len(bump)-1)) for i in range(len(bump))]))
 for m, r in bump.iterrows():
     moved = r.rank_no_high != r.rank_all
     ax.plot([0, 1], [r.rank_all, r.rank_no_high], "-o", lw=2.4 if moved else 1.6,
             color=pal[m], markersize=8, alpha=1 if moved else 0.55, zorder=3)
     ax.text(-0.04, r.rank_all, f"{m}  ({r.rate_all:.0%})", ha="right", va="center",
-            fontsize=9.5, color="#333333")
+            fontsize=9.5, color=BT_BLACK)
     tag = m if not moved else f"{m}  ▲" if r.rank_no_high < r.rank_all else f"{m}  ▼"
     ax.text(1.04, r.rank_no_high, f"{tag}  ({r.rate_no_high:.0%})", ha="left", va="center",
-            fontsize=9.5, color="#333333")
+            fontsize=9.5, color=BT_BLACK)
 ax.set_xlim(-0.75, 1.75); ax.invert_yaxis()
 ax.set_xticks([0, 1]); ax.set_xticklabels(["all benchmarks", "SWE-bench excluded"], fontsize=10)
 ax.set_yticks([]); ax.set_ylabel("rank  (1 = best)")
@@ -1269,7 +1280,7 @@ code(r'''def quadrant(frame, ax, title):
     r = config_reliability(frame, min_cell=4, min_total=8).dropna(subset=["macro"])
     r = r[r.n_benchmarks >= 2]  # need >=2 benchmarks for a meaningful cross-task std
     sns.scatterplot(data=r, x="macro", y="cross_task_std", size="n", sizes=(70, 420),
-                    hue="macro", palette="crest", edgecolor="white",
+                    hue="macro", palette=BT_CMAP, edgecolor="white",
                     linewidth=1, legend=False, ax=ax, zorder=3)
     repel_labels(ax, r.macro, r.cross_task_std, r.config, fontsize=7.5)
     ax.set_title(title, loc="left"); ax.set_xlabel("benchmark-balanced success rate")
@@ -1381,11 +1392,11 @@ for _, r in P.sort_values("usd_task").iterrows():
 fig, ax = plt.subplots(figsize=(11.5, 7))
 for isopen, grp in P.groupby("open"):
     ax.scatter(grp.usd_task, grp.macro, s=70 + grp.n * 0.7,
-               color="#2a8a4a" if isopen else "#30638e", alpha=0.8,
+               color=BT_GREEN if isopen else BT_BLUE_ACCENT, alpha=0.8,
                edgecolor="white", linewidth=1.2, zorder=3,
                label="open-weight" if isopen else "closed")
 fr = P[P.config.isin(front)].sort_values("usd_task")
-ax.plot(fr.usd_task, fr.macro, "--o", color="#c0392b", lw=1.6, ms=5, zorder=2,
+ax.plot(fr.usd_task, fr.macro, "--o", color=BT_ROSE, lw=1.6, ms=5, zorder=2,
         label="cost–quality frontier")
 repel_labels(ax, P.usd_task, P.macro, P.config, fontsize=7.5)
 ax.set_xscale("log")
@@ -1395,7 +1406,7 @@ ax.set_xlabel("avg cost per task  →  cheaper is better  (log $, LiteLLM rates)
 ax.set_ylabel("benchmark-balanced (macro) success  →  higher is better")
 titled(ax, "Cost vs quality — the deployable frontier",
        "upper-left dominates · bubble = sessions · $ = LiteLLM rates × measured output share", pad=20)
-ax.legend(loc="lower right", frameon=True, framealpha=0.9, edgecolor="#cccccc")
+ax.legend(loc="lower right", frameon=True, framealpha=0.9, edgecolor=BT_ICE_GREY)
 ax.margins(0.08); sns.despine(ax=ax)
 plt.tight_layout(); plt.show()
 P.sort_values("macro", ascending=False)[
@@ -1421,20 +1432,21 @@ for c, sub in df.groupby("config"):
 cps = pd.DataFrame(rows).sort_values("usd_success").reset_index(drop=True)
 
 fig, ax = plt.subplots(figsize=(11.5, 0.46 * len(cps) + 1.6))
-cmap = plt.cm.RdYlGn
-ax.barh(range(len(cps)), cps.usd_success, color=[cmap(s) for s in cps.succ],
+from matplotlib.colors import LinearSegmentedColormap as _LSC
+_bt_succ = _LSC.from_list("bt_succ", ["#651D31", "#F5AFD1", "#3A77EB", "#2C1FEB"])
+ax.barh(range(len(cps)), cps.usd_success, color=[_bt_succ(s) for s in cps.succ],
         height=0.72, zorder=3, edgecolor="white")
 ax.set_yticks(range(len(cps))); ax.set_yticklabels(cps.config, fontsize=9.5)
 ax.set_xscale("log")
 for y, (_, r) in enumerate(cps.iterrows()):
     ax.text(r.usd_success * 1.06, y, f"${r.usd_success:,.2f}  ·  {r.succ:.0%} succ",
-            va="center", ha="left", fontsize=8.5, color="#333333")
+            va="center", ha="left", fontsize=8.5, color=BT_BLACK)
 ax.invert_yaxis()  # cheapest-per-success on top
 ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
 ax.set_xlim(right=cps.usd_success.max() * 2.2)
 ax.set_xlabel("cost per SUCCESSFUL task  (log $, LiteLLM rates) — total spend ÷ successes")
 titled(ax, "Cost per successful outcome — the cheap-but-failing configs are the priciest",
-       "bar colour = success rate (red → green) · $ = LiteLLM rates × measured output share", pad=20)
+       "bar colour = success rate (low → high) · $ = LiteLLM rates × measured output share", pad=20)
 sns.despine(ax=ax, left=True); ax.tick_params(left=False)
 plt.tight_layout(); plt.show()
 cps.assign(usd_per_success=cps.usd_success.round(2), tok_per_success=cps.tok_success.round(0))[
@@ -1460,22 +1472,22 @@ for b, sub in df.groupby("benchmark"):
 rc = pd.DataFrame(rows).sort_values("ratio").reset_index(drop=True)
 
 fig, ax = plt.subplots(figsize=(10.5, 5.2))
-colors = ["#c0392b" if r > 1 else "#30638e" for r in rc.ratio]
+colors = [BT_ROSE if r > 1 else BT_BLUE_ACCENT for r in rc.ratio]
 ax.bar(range(len(rc)), rc.ratio, color=colors, width=0.62, zorder=3)
-ax.axhline(1.0, color="#555555", lw=1.1, zorder=2)                       # parity
-ax.axhspan(1.20, 1.54, color="#f0c419", alpha=0.18, zorder=0)           # leaderboard's band
+ax.axhline(1.0, color=BT_CONCRETE, lw=1.1, zorder=2)                       # parity
+ax.axhspan(1.20, 1.54, color=BT_PINK, alpha=0.25, zorder=0)             # leaderboard's band
 ax.text(len(rc) - 0.5, 1.37, "Open Agent Leaderboard\npooled +20–54%", ha="right",
-        va="center", fontsize=8, color="#9a7d0a")
+        va="center", fontsize=8, color=BT_ROSE)
 for x, r in enumerate(rc.ratio):
     ax.text(x, r + 0.04, f"{r:.2f}×\n({(r - 1) * 100:+.0f}%)", ha="center", va="bottom",
-            fontsize=8.5, weight="semibold", color="#333333")
+            fontsize=8.5, weight="semibold", color=BT_BLACK)
 ax.set_xticks(range(len(rc)))
 ax.set_xticklabels([BENCH_ABBR.get(b, b) for b in rc.benchmark], rotation=12, ha="right")
 ax.set_ylabel("failed-run tokens ÷ successful-run tokens")
 ax.set_ylim(0, max(rc.ratio) * 1.18)
 titled(ax, "Do failures cost more? Only on coding tasks",
-       "red >1 = failures cost MORE (thrash) · blue <1 = failures cost LESS (give up) · "
-       "yellow = leaderboard's pooled claim", pad=20)
+       "rose >1 = failures cost MORE (thrash) · blue <1 = failures cost LESS (give up) · "
+       "pink band = leaderboard's pooled claim", pad=20)
 sns.despine(ax=ax)
 plt.tight_layout(); plt.show()
 ''')
@@ -1500,7 +1512,8 @@ for (b, c), sub in df.groupby(["benchmark", "config"]):
         rows.append({"benchmark": b, "config": c, "succ": sub.success.mean(),
                      "usd_success": sub.cost_usd.sum() / ns})
 cb = pd.DataFrame(rows)
-cmap = plt.cm.RdYlGn
+from matplotlib.colors import LinearSegmentedColormap as _LSC
+_bt_succ = _LSC.from_list("bt_succ", ["#651D31", "#F5AFD1", "#3A77EB", "#2C1FEB"])
 
 def cps_figure(group, title, sub_caption):
     benches = [b for b in group if b in set(cb.benchmark)]
@@ -1511,13 +1524,13 @@ def cps_figure(group, title, sub_caption):
     axes = axes[:, 0]
     for ax, b in zip(axes, benches):
         s = cb[cb.benchmark == b].sort_values("usd_success").reset_index(drop=True)
-        ax.barh(range(len(s)), s.usd_success, color=[cmap(v) for v in s.succ],
+        ax.barh(range(len(s)), s.usd_success, color=[_bt_succ(v) for v in s.succ],
                 height=0.72, zorder=3, edgecolor="white")
         ax.set_yticks(range(len(s))); ax.set_yticklabels(s.config, fontsize=8.5)
         ax.set_xscale("log")
         for y, (_, r) in enumerate(s.iterrows()):
             ax.text(r.usd_success * 1.10, y, f"${r.usd_success:,.2f}  ·  {r.succ:.0%}",
-                    va="center", ha="left", fontsize=8, color="#333333")
+                    va="center", ha="left", fontsize=8, color=BT_BLACK)
         ax.invert_yaxis()                              # cheapest-per-success on top
         ax.set_xlim(right=s.usd_success.max() * 3.4)
         ax.xaxis.set_major_formatter(mticker.FuncFormatter(
@@ -1527,7 +1540,7 @@ def cps_figure(group, title, sub_caption):
     fig_title(fig, title, sub_caption)
     plt.tight_layout(rect=[0, 0, 1, 0.97])
 
-SUB = ("suite held fixed · bar colour = success rate (red → green) · "
+SUB = ("suite held fixed · bar colour = success rate (low → high) · "
        "$ = LiteLLM rates × measured output share · configs with ≥10 runs · cheapest on top")
 cps_figure(CODING, "Cost per successful task — coding / agentic suites", SUB)
 cps_figure(CONV, "Cost per successful task — conversational τ² suites", SUB)
@@ -1633,7 +1646,7 @@ def export_figures(cells):
             if len(saved) >= len(PLOT_FILES):
                 raise SystemExit(f"more figures than names ({len(PLOT_FILES)})")
             fig = plt.figure(num)
-            fig.savefig(out / PLOT_FILES[len(saved)], dpi=120, bbox_inches="tight")
+            fig.savefig(out / PLOT_FILES[len(saved)], dpi=300, bbox_inches="tight")
             saved.append(PLOT_FILES[len(saved)])
             plt.close(fig)
     if len(saved) != len(PLOT_FILES):
