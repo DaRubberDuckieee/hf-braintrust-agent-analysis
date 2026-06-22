@@ -156,11 +156,24 @@ Once imported, every run is a row you can sort, filter, and slice on any metadat
 <details>
 <summary><b>🔧 1b. How we ported the logs from HuggingFace into Braintrust</b> — data-engineering detail (click to expand)</summary>
 
-The dataset ships as 39 parquet shards on HuggingFace (`train-00000-of-00039` …).
-A converter script (`scripts/convert_hf_traces.py`) turns each raw session into
-Braintrust-shaped JSONL spans, then we upload with the Braintrust CLI. Steps:
+We import with the reusable cookbook script [`hf_bt_cookbook/import_logs.py`](hf_bt_cookbook/import_logs.py)
+(walkthrough in [`hf_bt_cookbook/README.md`](hf_bt_cookbook/README.md)) — a worked example you edit and re-run,
+not a black box. The whole mapping for this dataset is the EDIT ME block at the top:
 
-1. **Download** each parquet shard via `huggingface_hub.hf_hub_download`. 
+```python
+HF_REPO    = "Exgentic/agent-llm-traces"
+BT_PROJECT = "Hugging Face topics"
+ID_COL     = "session_id"                 # drives the deterministic root-span id
+TRACE_COL  = "spans"                      # the list of OTel-GenAI spans per session
+METADATA_COLS = ["benchmark", "harness", "models", "total_tokens"]
+SCORE_COLS = {}                           # task_success is added later by score_and_push.py
+```
+
+The script turns each raw session into Braintrust-shaped JSONL spans, then uploads with the Braintrust
+CLI. Steps:
+
+1. **Stream the rows** via `datasets.load_dataset(HF_REPO, streaming=True)` — no need to
+   materialize the 39 parquet shards locally.
 2. **One session → many spans.** For each session row we emit:
    - a **root span** (`type=task`): input = the initial user task, output = the
      agent's final response, plus all session metadata (model, benchmark, harness,
@@ -178,8 +191,9 @@ Braintrust-shaped JSONL spans, then we upload with the Braintrust CLI. Steps:
    string into the root `error` field (`"[N tool error(s) detected. Examples: ...]"`)
    so Topics/Issues can cluster on them. (This is the field we later learned NOT to
    use as a success signal — it's present even when N=0.)
-6. **Upload** with the Braintrust CLI:
-   `bt sync push project_logs:"Hugging Face topics" --in hf-traces-jsonl/`
+6. **Upload** by running the script with `--push`, which writes the JSONL and shells out to the
+   Braintrust CLI for you: `bt sync push project_logs:"Hugging Face topics" --in out/logs/`. (Run
+   without `--push` first to preview the JSONL — no network writes.)
 
 Output: 1,781 sessions → ~50k spans in the `Hugging Face topics` project.
 
@@ -932,9 +946,11 @@ needs the `--fresh` flag. This is what `scripts/score_and_push.py` does.
 ## Where things live
 - Scores in Braintrust: `scores.task_success` (0/1) + `metadata.judge_*` on root
   spans. Filter `scores.task_success IS NOT NULL`.
+- **Importer (`hf_bt_cookbook/`):**
+  - `import_logs.py` — HuggingFace → Braintrust Logs importer used here (defines the
+    deterministic id scheme; see §1b). `import_dataset.py` is the sibling for building a
+    gradable Dataset.
 - **Scripts (`scripts/` in this folder):**
-  - `convert_hf_traces.py` — HuggingFace → Braintrust importer (defines the
-    deterministic id scheme; see §1b).
   - `score_and_push.py` — safe LLM-as-judge scorer (judges each session, writes
     COMPLETE rows + scores, uploads via `bt sync push`).
   - `explore_trace.py` — helper to dump a single trace's spans for inspection.

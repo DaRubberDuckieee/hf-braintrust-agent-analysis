@@ -39,6 +39,7 @@ no manual tagging (see §1c and §6 of the summary).
 |---|---|
 | [`ANALYSIS-SUMMARY.md`](./ANALYSIS-SUMMARY.md) | The full write-up (start here). |
 | [`reliability_analysis.ipynb`](./reliability_analysis.ipynb) | The analysis notebook — all stats and figures. |
+| [`hf_bt_cookbook/`](./hf_bt_cookbook/) | Reusable HF → Braintrust importers; how the dataset got into Braintrust ([see below](#importing-the-data)). |
 | [`scripts/`](./scripts/) | Analysis and data processing scripts (see below). |
 | [`out/plots/`](./out/plots/) | The 17 figures embedded in the summary. |
 | [`bt_screencaptures/`](./bt_screencaptures/) | Braintrust UI screenshots (Logs view + Topics facets). |
@@ -50,10 +51,39 @@ no manual tagging (see §1c and §6 of the summary).
 |---|---|
 | [`scripts/build_notebook.py`](./scripts/build_notebook.py) | Generates the notebook from `data/full.json`; `--export` also re-renders every plot in `out/plots/`. |
 | [`scripts/bt_helpers.py`](./scripts/bt_helpers.py) | Braintrust connection + BTQL query helpers (pulls logs into pandas). |
-| [`scripts/convert_hf_traces.py`](./scripts/convert_hf_traces.py) | Ports the HuggingFace dataset → Braintrust logs (one root span/session + child spans/LLM call). |
 | [`scripts/score_and_push.py`](./scripts/score_and_push.py) | LLM-as-judge scorer — judges each session and writes `scores.task_success` back via `bt sync push`. |
 | [`scripts/explore_trace.py`](./scripts/explore_trace.py) | Helper to dump a single trace's spans for inspection. |
 | [`scripts/verify_pull.py`](./scripts/verify_pull.py) | Reproducibility check — re-pulls via BTQL and diffs row-for-row against `data/full.json`. |
+
+## Importing the data
+
+The traces were brought into Braintrust with the reusable cookbook importer
+[`hf_bt_cookbook/import_logs.py`](./hf_bt_cookbook/import_logs.py) — a worked example you edit and re-run, not a
+black box (full walkthrough in [`hf_bt_cookbook/README.md`](./hf_bt_cookbook/README.md)). Each session becomes a
+span tree: one root `task` span (input = first user message, output = final answer, with tool errors
+surfaced so **Topics/Issues** can cluster on them) plus one child `llm` span per call. The whole
+mapping for this dataset is the EDIT ME block at the top of the script:
+
+```python
+HF_REPO    = "Exgentic/agent-llm-traces"
+BT_PROJECT = "Hugging Face topics"        # the Braintrust project these land in
+ID_COL     = "session_id"                 # one root span per session; drives the deterministic id
+TRACE_COL  = "spans"                      # the list of OTel-GenAI spans per session
+METADATA_COLS = ["benchmark", "harness", "models", "total_tokens"]   # sliced on in the analysis
+SCORE_COLS = {}                           # task_success is added later by score_and_push.py
+```
+
+```bash
+python hf_bt_cookbook/import_logs.py            # preview: writes the bt-sync JSONL, no upload
+python hf_bt_cookbook/import_logs.py --push     # runs `bt sync push` into the project
+```
+
+Root span IDs are deterministic (`uuid5` of `session_id`), so re-running **upserts** the same
+sessions instead of duplicating — which is exactly how
+[`scripts/score_and_push.py`](./scripts/score_and_push.py) writes the LLM-judge `task_success` score
+back onto the existing spans. The same cookbook also ships
+[`hf_bt_cookbook/import_dataset.py`](./hf_bt_cookbook/import_dataset.py) for turning a HuggingFace dataset into a
+gradable Braintrust **Dataset**, if you want to run evals rather than analyze traces.
 
 ## Setup
 
