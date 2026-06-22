@@ -1,8 +1,8 @@
-# What 1,781 agent traces taught us about what actually matters
+# How to actually evaluate AI agents at scale
 
 Running an AI agent in production generates traces, but making sense of them is a more complex puzzle. Raw agent traces don't come built in with answers. You still have to figure out how to query them, score them, and make sure the patterns you're seeing are real.
 
-To understand this process, we took 1,781 real agent traces from HuggingFace and used Braintrust to process them for patterns and high-level learnings.
+To understand this process, we took 1,781 real agent traces from [Hugging Face](https://huggingface.co/datasets/Exgentic/agent-llm-traces) and used Braintrust to process them for patterns and high-level learnings.
 
 Here's what we did, how we did it, and what the data actually showed.
 
@@ -24,9 +24,9 @@ Here's what we did, how we did it, and what the data actually showed.
 
 ## The dataset: what we were working with
 
-The dataset is from Exgentic on HuggingFace, which has 1,781 agent runs across six benchmarks. Each run includes a task, the agent's complete conversation (every LLM call it made), and metadata like model, benchmark, harness, token count, and number of LLM calls. Each run generates child spans for individual LLM calls. There were ~49k child spans total across all 1,781 runs, averaging about 27 LLM calls per run.
+The dataset is from Exgentic on Hugging Face, which has 1,781 agent runs across six benchmarks. Each run includes a task, the agent's complete conversation (every LLM call it made), and metadata like model, benchmark, harness, token count, and number of LLM calls. Each run generates child spans for individual LLM calls. There were ~49k child spans total across all 1,781 runs, averaging about 27 LLM calls per run.
 
-It's important to note that the dataset had zero ground-truth labels. HuggingFace never exported the grading verdicts, so all `scores` and `expected` fields were null. We had to build our own success measure from scratch, which we'll get to in an upcoming section.
+It's important to note that the dataset had zero ground-truth labels. Hugging Face never exported the grading verdicts, so all `scores` and `expected` fields were null. We had to build our own success measure from scratch, which we'll get to in an upcoming section.
 
 ### Models
 
@@ -65,24 +65,26 @@ Five harnesses appeared in the dataset:
 - **`claude_code`** — Anthropic's native agent loop. Uses Claude's custom XML format for tool calls and manages the agentic loop natively.
 - **`tool_calling`** — Structured JSON function-calling, one tool call at a time. The standard approach, but tighter constraints.
 - **`tool_calling_with_shortlisting`** — Same as above, but with a pre-filtering step that narrows which tools are offered each turn.
-- **`smolagents_code`** — HuggingFace's framework. The model writes Python code to call tools, executes it, and returns the output. Lets the agent chain logic in a single step.
+- **`smolagents_code`** — Hugging Face's framework. The model writes Python code to call tools, executes it, and returns the output. Lets the agent chain logic in a single step.
 - **`openai_solo`** — A minimal OpenAI-style scaffold. Thin wrapper.
 
-## Getting the data from HuggingFace into Braintrust
+## Getting the data from Hugging Face into Braintrust
 
-The dataset ships as 39 Parquet shards on HuggingFace. A Parquet file is a column-oriented data format commonly used for storing large datasets efficiently. "Shards" just means the dataset was split across 39 separate files instead of one big file, which is a common pattern for large datasets on HuggingFace.
+The dataset ships as 39 Parquet shards on Hugging Face. A Parquet file is a column-oriented data format commonly used for storing large datasets efficiently. "Shards" just means the dataset was split across 39 separate files instead of one big file, which is a common pattern for large datasets on Hugging Face.
 
-A converter script (`convert_hf_traces.py`) turns each raw session into Braintrust-shaped JSONL spans and uploads them to Braintrust via `bt sync push`. Here's how it works:
+We import the data with a small, reusable cookbook script, [`hf_bt_cookbook/import_logs.py`](hf_bt_cookbook/import_logs.py). It's a worked example you edit and re-run, not a black box: the entire mapping lives in an `EDIT ME` block at the top of the file, where you name the Hugging Face repo and which columns hold the session ID, the trace, the metadata, and any scores. The script turns each raw session into Braintrust-shaped JSONL spans and uploads them via `bt sync push`. Here's how it works:
 
-1. **Download** each Parquet shard via `huggingface_hub.hf_hub_download`.
+1. **Stream the rows** with `datasets.load_dataset("Exgentic/agent-llm-traces", streaming=True)`. Streaming pulls rows on demand, so there's no need to download and materialize all 39 Parquet shards locally.
 2. **One session, many spans.** For each session row, emit a root span (`type=task`) with the initial task, the agent's final response, and all session metadata, plus one child span per LLM call (`type=llm`) with input/output messages and per-call token metrics.
 3. **Deterministic span IDs.** `root_id = uuid5(NAMESPACE_DNS, "root:" + session_id)`. This mattered later, since stable IDs mean re-imports upsert the same rows instead of duplicating, and made a score write-back possible.
-4. **Message normalization.** The source uses OpenTelemetry "parts" format, but we convert to OpenAI-style messages so Braintrust renders them as readable chat turns.
-5. **Upload** to Braintrust via `bt sync push project_logs:"Hugging Face topics" --in hf-traces-jsonl/`
+4. **Message normalization.** The source uses the OpenTelemetry GenAI "parts" format, but we convert to OpenAI-style messages so Braintrust renders them as readable chat turns.
+5. **Preview, then upload.** Running the script writes the JSONL and prints the span and session counts with no network writes. Passing `--push` runs the upload for you: `bt sync push project_logs:"Hugging Face topics" --in out/logs/`.
 
-The final output is that get all 1,781 sessions → 1,781 root spans in the `Hugging Face topics` Braintrust project.
+The final output is all 1,781 sessions → 1,781 root spans in the `Hugging Face topics` Braintrust project.
 
-Once imported, every run is a row you can sort, filter, and slice on any metadata field: model, benchmark, harness, tokens, scores, duration. The Braintrust Logs view turns 1,781 opaque HuggingFace JSON files into a queryable table.
+The same cookbook also ships [`hf_bt_cookbook/import_dataset.py`](hf_bt_cookbook/import_dataset.py), which turns a Hugging Face dataset into a gradable Braintrust dataset if you want to run evals rather than analyze existing traces.
+
+Once imported, every run is a row you can sort, filter, and slice on any metadata field: model, benchmark, harness, tokens, scores, duration. The Braintrust Logs view turns 1,781 opaque Hugging Face JSON files into a queryable table.
 
 ![Braintrust Logs UI: every agent run as a filterable row with model, benchmark, tokens, scores and duration columns](bt_screencaptures/log_view_llm_errors.png)
 
@@ -119,7 +121,7 @@ Once we had scores, we wrote them back to each root span in Braintrust as `score
 
 ### An example of LLM-as-a-judge in action
 
-For example, we had an AppWorld run that finished cleanly with zero tool errors in the original HuggingFace logs, but our LLM-as-a-judge scored a failure.
+For example, we had an AppWorld run that finished cleanly with zero tool errors in the original Hugging Face logs, but our LLM-as-a-judge scored a failure.
 
 - **Log:** `86c1014d-321f-522b-ae63-5a0b2da977f9` — `appworld`, `claude-opus-4-5`
 - **Task:** *"Reset friends on Venmo to be the same as my friends in my phone. Befriend and unfriend as needed."*
@@ -162,7 +164,7 @@ The fix is to compare only within benchmarks. Instead of pooling all runs togeth
 
 ![Pooled vs benchmark-balanced success per configuration: bars are micro rates with Wilson 95% CIs, diamonds are macro rates](out/plots/02_1a.png)
 
-*Bars = pooled rate; diamonds = benchmark-balanced rate. Where the diamond sits well to the left of its bar, that config's headline is flattered by an easy task mix.*
+Bars show the pooled rate; diamonds show the benchmark-balanced rate. Where the diamond sits well to the left of its bar, that config's headline is flattered by an easy task mix.
 
 In the graph, solid bars represent the harness x model combos that ran on at least three suites, which we therefore deemed the most statistically meaningful. Among those, `claude_code` is the strongest harness. With Claude it hits 73% and with Gemini 71%, both ahead of the three `gpt-4.1` harness configurations (`tool_calling` at 61%, `smolagents_code` at 61%, and `openai_solo` at 28%).
 
@@ -252,13 +254,13 @@ And harness choice barely changes token cost. So it's the highest-leverage, chea
 
 ![Adjusted harness effect and incremental R² by factor](out/plots/09_1h.png)
 
-*Left: each harness's effect on success vs. `tool_calling`, with model and benchmark held fixed. Right: how much of the variation in success each factor explains.*
+The left panel shows each harness's effect on success relative to `tool_calling`, with model and benchmark held fixed. The right panel shows how much of the variation in success each factor explains.
 
 `claude_code` and `smolagents_code` harnesses both improve performance. `claude_code` uses Claude's native agent-style interaction, while `smolagents_code` lets the model write and execute code to call tools. `tool_calling_with_shortlisting` undercuts performance, suggesting that narrowing the available tool set can remove useful options or introduce routing mistakes.
 
 ![Harness report card: success by harness for each model, on shared benchmarks](out/plots/06_1e.png)
 
-*Each panel fixes the model; each bar is one harness's success rate on the suites that model ran. The shared suites are named under each panel title.*
+Each panel fixes the model; each bar is one harness's success rate on the suites that model ran. The shared suites are named under each panel title.
 
 ### Finding 2: open-weight models are production-ready for coding
 
@@ -280,7 +282,7 @@ A config can score well on average but completely fall apart on a specific task 
 
 ![Reliability quadrant: benchmark-balanced success vs cross-task standard deviation, bubble size = sessions](out/plots/03_1b.png)
 
-*Bottom-right = dependable (high and consistent); top = erratic. Open-weight `claude_code` configs (DeepSeek, Kimi) sit in the reliable corner alongside Claude Opus; the gpt-4.1 configs scatter high on the spread axis.*
+Bottom-right is dependable (high and consistent); further up is erratic. Open-weight `claude_code` configs (DeepSeek, Kimi) sit in the reliable corner alongside Claude Opus; the gpt-4.1 configs scatter high on the spread axis.
 
 One caveat: the open-weight configs were only tested on two suites (AppWorld and SWE-bench), so their macro rate isn't directly comparable to full-six-suite configs. With that said, `smolagents_code` with DeepSeek-V3.2 and Kimi-K2.5 are both highly reliable and highly successful on those coding tasks. Among the full-six-suite configs, `claude_code · claude-opus-4-5` (73%) edges out `claude_code · gemini-3-pro` (71%), but is slightly more erratic (cross-task std 0.27 vs 0.24).
 
@@ -288,7 +290,7 @@ The heatmap below is the per-suite receipt. Scan a row: all-green means a genuin
 
 ![Config × benchmark success heatmap: each cell is a config's success on one suite, grey = under 5 tasks](out/plots/07_1f.png)
 
-*Grey = fewer than 5 tasks (too thin). `claude_code · claude-opus-4-5` is the textbook gambler — 100% on SWE-bench but 26% on AppWorld. `claude_code · gemini-3-pro` drops to 33% on telecom. The open-weight rows are short but tight and green.*
+Grey cells have fewer than 5 tasks and are too thin to read. `claude_code · claude-opus-4-5` is the textbook gambler — 100% on SWE-bench but 26% on AppWorld. `claude_code · gemini-3-pro` drops to 33% on telecom. The open-weight rows are short but tight and green.
 
 ### Finding 4: there is no universal winner
 
@@ -317,13 +319,13 @@ First, the quality vs cost frontier — every config placed by benchmark-balance
 
 ![Cost vs quality frontier: benchmark-balanced success vs average cost per task](out/plots/18_4a.png)
 
-*Upper-left dominates. Open-weight `claude_code` configs (DeepSeek, Kimi) sit on the frontier and push the closed configs off it. Note: token cost is partly benchmark-driven, so configs that ran token-heavy coding suites sit further right partly because of what they ran.*
+Upper-left dominates. Open-weight `claude_code` configs (DeepSeek, Kimi) sit on the frontier and push the closed configs off it. Token cost is partly benchmark-driven, so configs that ran token-heavy coding suites sit further right partly because of what they ran.
 
 Now cost per successful task — where "cheap" stops being cheap:
 
 ![Cost per successful task per config, log dollar scale, bars coloured by success rate](out/plots/19_4b.png)
 
-*`tool_calling · claude-opus-4-5` costs **$64.82 per success** (16% success rate). `openai_solo · gemini-3-pro` costs **$25.27**. Compare that to open-weight `claude_code` configs at **$0.86 (Kimi) to $1.45 (DeepSeek) per success** at 82–88% success — which beats closed `claude_code · claude-opus` at $6.19 and `· gemini-3-pro` at $3.09.*
+`tool_calling` x `claude-opus-4-5` costs $64.82 per success (16% success rate). `openai_solo` x `gemini-3-pro` costs **$25.27**. Compare that to open-weight `claude_code` configs at $0.86 (Kimi) to $1.45 (DeepSeek) per success at 82–88% success, which beats closed `claude_code` x `claude-opus` at $6.19.
 
 The answer to "which model is cheapest" depends entirely on whether you're asking about cost per task or cost per success. They rank configs in completely different orders.
 
@@ -355,13 +357,13 @@ The pooled view makes the thrashing pattern visible first. `claude_code` failure
 
 ![Tool-call errors and token usage per failed run, by harness (box plots)](out/plots/12_2b.png)
 
-*Left: tool-call errors per failed run are near-zero everywhere — the `error` field is not a failure signal. Right: token usage per failed run — `claude_code` failures have a huge upper tail (thrashing), others stay lean. Note this is pooled across suites, so part of `claude_code`'s tail reflects that it ran the token-heavy coding and browse suites.*
+The left panel shows tool-call errors per failed run, which are near-zero everywhere — confirming the `error` field is not a failure signal. The right panel shows token usage per failed run: `claude_code` failures have a huge upper tail from thrashing, while others stay lean. This is pooled across suites, so part of `claude_code`'s tail reflects that it ran the token-heavy coding and browse suites.
 
 But token usage is dominated by the benchmark — a SWE-bench run dwarfs a TAU2 one — so the pooled view partly ranks harnesses by which suites they ran. The per-benchmark view below isolates each harness's own burn profile, and the thrash/give-up split holds up.
 
 ![Token usage per failed run within each benchmark, faceted](out/plots/13_2b_2.png)
 
-*Each panel fixes the benchmark. Coding suites (top, M-scale) vs conversational suites (bottom, k-scale) — failure means thrashing in one and giving up in the other.*
+Each panel fixes the benchmark. Coding suites (top, M-scale) and conversational suites (bottom, k-scale) show opposite patterns: failure means thrashing in one and giving up in the other.
 
 The kind of failure differs too. TAU2 failures are almost entirely silent wrong answers, where the agent confidently finishes the wrong thing. Coding failures skew toward non-convergence, loops, and runtime errors.
 
@@ -387,11 +389,11 @@ A few things to hold in mind when reading these results:
 
 ![High-bleed (SWE-bench) vs clean (BrowseComp+) success per model](out/plots/15_3a.png)
 
-*A large high-bleed-minus-clean gap suggests scores may be inflated by training-data leakage. Treat SWE-bench numbers as an upper bound.*
+A large high-bleed-minus-clean gap suggests scores may be inflated by training-data leakage. Treat SWE-bench numbers as an upper bound.
 
 ## What Braintrust made possible
 
-The raw HuggingFace dataset lets you see what happened in each trace. Braintrust made it queryable, scoreable, and auditable at scale.
+The raw Hugging Face dataset lets you see what happened in each trace. Braintrust made it queryable, scoreable, and auditable at scale.
 
 Specifically:
 
@@ -402,3 +404,9 @@ Specifically:
 - **Topics without manual tagging.** The failure taxonomy, the benchmark clustering, the intent groupings all came out of Topics automatically. That's a head start that would have taken days to build by hand.
 
 - **Regression analysis on structured metadata.** The harness-vs-model finding required `success ~ C(benchmark) + C(model) + C(harness)` on all 1,780 rows. That regression is only possible when every span has queryable metadata fields. Raw traces don't have that structure built in.
+
+And the work doesn't stop at analysis. Because every run is now structured data in Braintrust, this dataset is set up for two more things:
+
+- **This scales well past 50k spans.** This dataset is small, but production agent traces are not. Braintrust runs on [Brainstore](https://www.braintrust.dev/blog/brainstore), a storage engine built for AI logs that returns median queries in under a second across terabytes, roughly 80× faster than general-purpose stores, with full-text search in about 240ms. The `GROUP BY benchmark, harness, model` slice we ran here works the same way against millions of spans.
+
+- **Turn a failure cluster into a targeted experiment.** Topics already grouped the failures into named classes like `False success confirmation` and `Incomplete multi-step execution`. You can filter to one cluster, save those rows as a [dataset](https://www.braintrust.dev/docs/guides/datasets), and run an experiment against your chosen config to check whether a prompt or harness change actually fixes that specific failure mode, instead of hoping an aggregate score moved for the right reason.
