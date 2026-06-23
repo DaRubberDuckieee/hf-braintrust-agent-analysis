@@ -18,7 +18,7 @@ Here's what we did, how we did it, and what the data actually showed.
 
 5. **Cost per task and cost per success rank configs very differently.** Open-weight models cost $0.73–$1.27 per successful SWE-bench task. Closed models cost $4–$5. On conversational tasks, gpt-4.1 flips the table at $0.02–$0.03 per success.
 
-6. **Don't always trust token efficiency.** GPT-4.1 looked 10–100× cheaper on tokens, but on hard tasks, it was cheap because it failed early, not because it was smarter. Cost without success is just failure with fewer tokens burned.
+6. **Don't always trust token efficiency.** gpt-4.1 looked 10–100× cheaper on tokens, but on hard tasks, it was cheap because it failed early, not because it was smarter. Cost without success is just failure with fewer tokens burned.
 
 7. **Failure patterns flip.** Coding agents that fail use *more* tokens because they thrash. Customer-service agents that fail use *fewer* tokens because they give up early.
 
@@ -58,7 +58,7 @@ The six benchmarks in the dataset cover fundamentally different kinds of tasks:
 
 ### Harnesses
 
-A harness is the agent scaffold wrapped around the model. The model (like Claude and GPT) only predicts test, but the harness does everything else. It formats the task and available tools into the prompt, parses the model's output into actual actions, executes those actions, feeds results back, manages the loop, handles retries, and decides when to stop.
+A harness is the agent scaffold wrapped around the model. The model (like Claude and GPT) only predicts text, but the harness does everything else. It formats the task and available tools into the prompt, parses the model's output into actual actions, executes those actions, feeds results back, manages the loop, handles retries, and decides when to stop.
 
 Five harnesses appeared in the dataset:
 
@@ -90,13 +90,13 @@ Once imported, every run is a row you can sort, filter, and slice on any metadat
 
 ## Adding success scores as metadata
 
-There was one problem with the dataset. Each benchmark grades against something hidden, like test cases, database state, proprietary rubrics, but none of that was exported alongside the traces. Basically, the traces had info on the runs but not the verdicts.
+There was one problem with the dataset. Each benchmark grades against something hidden, like test cases, database state, or proprietary rubrics, but none of that was exported alongside the traces. Basically, the traces had info on the runs but not the verdicts.
 
 Also, the `error` field in the original dataset is NOT a crash flag. It's a diagnostic string like `"[N tool error(s) detected. Examples: ...]"` that appears even when N=0. So the "error rate" is pretty meaningless here, which is exactly why a real success measure was necessary.
 
 To fix this issue, we built an LLM-as-judge proxy to judge success rate of the task completion.
 
-Essentially, for each of 1,781 runs, we extract the full final conversation (all tool calls, results, the agent's final message), feed GPT-4.1 the task, conversation, and a benchmark-specific grading rubric, and get back `success (0/1)`, `confidence (low/medium/high)`, and short reasoning (≤35 words).
+Essentially, for each of 1,781 runs, we extract the full final conversation (all tool calls, results, the agent's final message), feed gpt-4.1 the task, conversation, and a benchmark-specific grading rubric, and get back `success (0/1)`, `confidence (low/medium/high)`, and short reasoning (≤35 words).
 
 Here's the prompt we used for our LLM-as-a-judge:
 
@@ -110,7 +110,7 @@ Be strict: ambiguous/unverified = 0.
 Respond ONLY with JSON: {"success":0 or 1,"confidence":"low"|"medium"|"high","reasoning":"<=35 words"}
 ```
 
-Note: we used GPT-4o judged GPT-4.1's own runs to avoid self-grading.
+Note: we used GPT-4o to judge gpt-4.1's own runs to avoid self-grading.
 
 Reliability varies by benchmark:
 - **SWE-bench (strong):** the judge sees the actual diff and test output, it can verify independently.
@@ -149,7 +149,7 @@ Before diving in, a quick reference for what the visual elements in the charts b
 
 ### Why you can't just pool averages
 
-Not all models ran all benchmarks. Claude and Gemini ran on all six benchmarks. DeepSeek and Kimi ran only AppWorld and SWE-bench. GPT-4.1 ran only TAU2. Pooling averages across this uneven coverage is Simpson's paradox, where a model can look "better" just because it ran easier tasks.
+Not all models ran all benchmarks. Claude and Gemini ran on all six benchmarks. DeepSeek and Kimi ran only AppWorld and SWE-bench. gpt-4.1 ran only TAU2. Pooling averages across this uneven coverage is Simpson's paradox, where a model can look "better" just because it ran easier tasks.
 
 | Model | appworld | browsecompplus | swebench | tau2_airline | tau2_retail | tau2_telecom |
 |---|---|---|---|---|---|---|
@@ -230,9 +230,9 @@ claude_code      gpt-4.1               22   24.7   0.09   224    18
 openai_solo      gpt-4.1               17    3.1   0.01    18     6
 ```
 
-`tcw_short` = tool_calling_with_shortlisting.
+`tcw_short` = tool_calling_with_shortlisting. `Az/` = Azure-hosted variant. `o/` = open-weight model accessed via OpenAI-compatible Azure endpoint.
 
-There's a few cells worth calling out. Kimi x `smolagents_code` x AppWorld is the standout open-weight result with 92% success at 0.53M tokens. gpt-5.2 x `claude_code` x SWE-bench is the overall cost/outcome winner, with 93% at 0.52M tokens and the fastest wall-clock time in the table. Claude x `claude_code` x AppWorld is the worst at 26% success at 4.19M tokens.
+There are a few cells worth calling out. Kimi x `smolagents_code` x AppWorld is the standout open-weight result with 92% success at 0.53M tokens. gpt-5.2 x `claude_code` x SWE-bench is the overall cost/outcome winner, with 93% at 0.52M tokens and the fastest wall-clock time in the table. Claude x `claude_code` x AppWorld is the worst at 26% success at 4.19M tokens.
 
 ## Specific findings
 
@@ -242,9 +242,9 @@ When we hold the model and benchmark fixed and change only the harness, we see s
 
 - Claude on SWE-bench: 100% (`claude_code`) vs 14% (`tool_calling`)
 - Kimi on AppWorld: 92% (`smolagents_code`) vs 12% (`tool_calling`)
-- GPT-4.1 on telecom: 51% (`smolagents_code`) vs 18% (`claude_code`)
+- gpt-4.1 on telecom: 51% (`smolagents_code`) vs 18% (`claude_code`)
 
-To confirm this isn't just coverage noise, we ran a regression on all 1,780 rows. A linear-probability regression predicts the probability of success (0 or 1) for each run, isolating the effect of one variable (in this case, the harness) while holding model and benchmark constant. We used HC1 standard errors, a correction that accounts for the fact that variance isn't uniform across configs, so the confidence intervals stay reliable. Controlling for both model and benchmark, we found:
+To confirm this isn't just coverage noise, we ran a regression on all 1,780 rows (1,781 sessions minus one that had no judge score). A linear-probability regression predicts the probability of success (0 or 1) for each run, isolating the effect of one variable (in this case, the harness) while holding model and benchmark constant. We used HC1 standard errors, a correction that accounts for the fact that variance isn't uniform across configs, so the confidence intervals stay reliable. Controlling for both model and benchmark, we found:
 
 - **Harness explains ~5.3% of the variation in success**. This means that after controlling for model and benchmark, the harness still accounts for 5.3% of the remaining differences in outcomes.
 - **Model explains only ~0.7%**. Swapping models barely moves success rates once you've accounted for which harness and benchmark you're using. Changing the harness explains 7× more.
@@ -303,9 +303,9 @@ Different models win different jobs:
 - **TAU2 Retail:** Claude (95% success rate)
 - **TAU2 Telecom:** Claude (82% success rate)
 
-One thing to note is that the reason why DeepSeek and Kimi do better on AppWorld is could be due to the harness. Closed models ran AppWorld almost entirely under `tool_calling`, which is the worst harness for it. However, same-harness, open weights still beat Claude specifically on AppWorld. Claude is weak on AppWorld, getting a 26% success rate even in its own harness,
+One thing to note is that the reason DeepSeek and Kimi do better on AppWorld may be due to the harness. Closed models ran AppWorld almost entirely under `tool_calling`, which is the worst harness for it. However, same-harness, open weights still beat Claude specifically on AppWorld. Claude is weak on AppWorld, getting a 26% success rate even in its own harness.
 
-The biggest takeaway it that there's no "best model." There's only "best for this job".
+The biggest takeaway is that there's no "best model." There's only "best for this job."
 
 ### Finding 5: cost per task and cost per success are very different numbers
 
@@ -333,17 +333,17 @@ The answer to "which model is cheapest" depends entirely on whether you're askin
 
 On coding and agentic suites, open-weight wins. On SWE-bench, `claude_code · Kimi-K2.5` costs **$0.73/success** (94%) and `· DeepSeek-V3.2` **$1.27** (96%), versus closed `· claude-opus` at **$4.28** (100%) and `· gemini-3-pro` at **$4.97** (87%). On AppWorld the gap is larger: `smolagents_code · Kimi-K2.5` costs **$0.40/success** (92%) versus `claude_code · claude-opus` at **$84.33** (26%).
 
-![Cost per successful task, coding/agentic suites (swebench, appworld, browse), faceted](out/plots/21_4d.png)
+![Cost per successful task, coding/agentic suites (SWE-bench, AppWorld, BrowseComp+), faceted](out/plots/21_4d.png)
 
 On conversational TAU2 suites, the story flips. Open-weight models never ran these, and cheap closed models win: on TAU2 Retail, `gpt-4.1` configs hit **$0.02–0.03/success at 90%+**, versus `claude_code · claude-opus` at **$1.95** (95%).
 
-![Cost per successful task, conversational tau2 suites (airline, retail, telecom), faceted](out/plots/22_4e.png)
+![Cost per successful task, conversational TAU2 suites (airline, retail, telecom), faceted](out/plots/22_4e.png)
 
 The practical takeaway: pick the cheapest config that clears your quality bar — but that config is different per task family. Open-weight for coding, gpt-4.1 for conversational support.
 
 ### Finding 6: "efficient" can mean "gave up"
 
-GPT-4.1 looked 10–100× cheaper on tokens than other models. But when we dug into the traces, we found that on hard tasks, it was cheap because it failed early, not because it was smarter. It failed 53–90% of the time on SWE-bench and AppWorld while spending almost nothing.
+gpt-4.1 looked 10–100× cheaper on tokens than other models. But when we dug into the traces, we found that on hard tasks, it was cheap because it failed early, not because it was smarter. It failed 53–90% of the time on SWE-bench and AppWorld while spending almost nothing.
 
 Cost without success is meaningless. The relevant metric is cost per successful outcome, which completely reorders the rankings. On SWE-bench, Claude and DeepSeek both hit ~100/96%, but Claude does it at 0.82M tokens and 213 seconds, while DeepSeek burns 2.07M tokens and 1,220 seconds (20 minutes) for the same outcome.
 

@@ -25,7 +25,7 @@ def code(src):
 
 
 # ---------------------------------------------------------------- title
-md(r"""# Agent-eval reliability, failure modes & benchmark bleed
+md(r"""# Evaluating AI agents at scale with Hugging Face
 
 A look at the **full** set of agentic-eval logs pulled from Braintrust via BTQL
 (`data/full.json`, all 1,781 root task spans — the UI export caps at 1,000 rows,
@@ -71,78 +71,19 @@ import seaborn as sns
 
 warnings.filterwarnings("ignore")
 
-# ── Braintrust brand palette ──────────────────────────────────────────────────
-BT_BLUE        = "#2C1FEB"
-BT_BLUE_ACCENT = "#3A77EB"
-BT_BLACK       = "#000000"
-BT_ICE_GREY    = "#D8DEEE"
-BT_CONCRETE    = "#504F4F"
-BT_PINK        = "#F5AFD1"
-BT_GREEN       = "#14382D"
-BT_ROSE        = "#651D31"
+# ── Braintrust brand styling (colors, colormaps, typography, helpers) ─────────
+# bt_viz.py is the single source of truth — see scripts/bt_viz.py. Importing it
+# here (rather than redeclaring the palette inline) keeps every chart in this
+# notebook and any other script in sync with one definition.
+sys.path.insert(0, "scripts")
+from bt_viz import (
+    BT_BLUE, BT_BLUE_ACCENT, BT_BLACK, BT_CONCRETE, BT_ICE_GREY, BT_LIME,
+    BT_GREEN, BT_PINK, BT_ROSE, BT_WHITE,
+    BT_CMAP, BT_HEAT, BT_SUCC, BT_DIVERGING, ANNOT,
+    use_braintrust_theme, titled, fig_title, repel_labels, key_box,
+)
 
-from matplotlib.colors import LinearSegmentedColormap
-BT_CMAP = LinearSegmentedColormap.from_list("bt_blue", [BT_ICE_GREY, BT_BLUE_ACCENT, BT_BLUE])
-BT_HEAT = LinearSegmentedColormap.from_list("bt_heat", [BT_ICE_GREY, BT_BLUE_ACCENT, BT_BLUE])
-
-sns.set_theme(style="whitegrid", context="notebook")
-plt.rcParams.update({
-    "figure.dpi": 300,
-    "savefig.dpi": 300,
-    "savefig.bbox": "tight",
-    "figure.facecolor": "white",
-    "axes.facecolor": "white",
-    "axes.edgecolor": BT_ICE_GREY,
-    "axes.linewidth": 0.8,
-    "axes.titlesize": 14,
-    "axes.titleweight": "bold",
-    "axes.titlepad": 12,
-    "axes.titlecolor": BT_BLACK,
-    "axes.labelsize": 10.5,
-    "axes.labelcolor": BT_CONCRETE,
-    "axes.labelpad": 6,
-    "axes.spines.top": False,
-    "axes.spines.right": False,
-    "grid.color": BT_ICE_GREY,
-    "grid.linewidth": 0.8,
-    "xtick.labelsize": 9.5,
-    "ytick.labelsize": 9.5,
-    "xtick.color": BT_CONCRETE,
-    "ytick.color": BT_CONCRETE,
-    "legend.fontsize": 9,
-    "legend.title_fontsize": 9.5,
-    "legend.frameon": False,
-    "font.size": 10.5,
-    "figure.titlesize": 15,
-    "figure.titleweight": "bold",
-})
-ANNOT = dict(fontsize=8.5, color=BT_CONCRETE)
-
-
-def titled(ax, main, sub=None, pad=22):
-    ax.set_title(main, loc="left", pad=pad, fontweight="bold")
-    if sub:
-        ax.annotate(sub, xy=(0, 1), xytext=(0, 5), xycoords="axes fraction",
-                    textcoords="offset points", fontsize=9, color=BT_CONCRETE, va="bottom")
-
-
-def fig_title(fig, main, sub=None):
-    h = fig.get_figheight()
-    fig.text(0.012, 1 + 0.32 / h, main, ha="left", fontsize=14, fontweight="bold", color=BT_BLACK)
-    if sub:
-        fig.text(0.012, 1 + 0.10 / h, sub, ha="left", fontsize=9, color=BT_CONCRETE)
-
-
-from adjustText import adjust_text
-
-
-def repel_labels(ax, xs, ys, texts, fontsize=8.5, color=None):
-    color = color or BT_CONCRETE
-    objs = [ax.text(x, y, t, fontsize=fontsize, color=color) for x, y, t in zip(xs, ys, texts)]
-    adjust_text(objs, ax=ax,
-                arrowprops=dict(arrowstyle="-", color=BT_ICE_GREY, lw=0.6),
-                expand=(1.15, 1.4), force_text=(0.4, 0.6))
-    return objs
+use_braintrust_theme()
 
 
 pd.set_option("display.max_columns", 50)
@@ -377,7 +318,19 @@ for yi, cfg in enumerate(cov.index):         # suite-coverage count on the right
     ax.text(len(cov.columns) + 0.15, yi + 0.5, f"{n_suites[cfg]}/6", va="center",
             ha="left", fontsize=8.5, weight="semibold",
             color=BT_GREEN if n_suites[cfg] >= 5 else BT_ROSE)
-titled(ax, "Config × benchmark coverage", "cell = tasks run · grey = <5 (too thin) · right = suites covered")
+titled(ax, "Config × benchmark coverage", "cell = tasks run · right = suites covered")
+from matplotlib.patches import Patch
+# Ice grey is a real cell fill -> Patch swatch. Green/rose only ever color the "X/6"
+# text, never a fill -> represent them as colored text, not a block (a solid Patch
+# would imply a filled region that doesn't exist anywhere in this chart).
+ax.legend(handles=[
+    Patch(facecolor=BT_ICE_GREY, edgecolor=BT_CONCRETE, linewidth=0.5, label="<5 tasks (too thin)"),
+], loc="upper right", bbox_to_anchor=(1.0, 1.16), frameon=True, framealpha=0.92,
+   edgecolor=BT_ICE_GREY, fontsize=8)
+ax.text(1.0, 1.085, "≥5 of 6 suites covered", transform=ax.transAxes, ha="right", va="top",
+        fontsize=8, color=BT_GREEN, weight="semibold")
+ax.text(1.0, 1.045, "<5 of 6 suites covered", transform=ax.transAxes, ha="right", va="top",
+        fontsize=8, color=BT_ROSE, weight="semibold")
 ax.set_xlabel(""); ax.set_ylabel(""); ax.tick_params(length=0)
 plt.setp(ax.get_xticklabels(), rotation=18, ha="right")
 plt.tight_layout(); plt.show()
@@ -397,14 +350,13 @@ err = np.vstack([relc.micro - relc.ci_lo, relc.ci_hi - relc.micro])
 colors = BT_CMAP(relc.macro)
 for y, (_, r) in enumerate(relc.iterrows()):
     thin = r.n_benchmarks < COMPARABLE_BM
-    ax.barh(y, r.micro, xerr=err[:, [y]], color=colors[y],
+    ax.barh(y, r.micro, xerr=err[:, [y]], color=BT_ICE_GREY if thin else colors[y],
             error_kw=dict(ecolor=BT_CONCRETE, capsize=3.5, lw=1.3), height=0.72, zorder=3,
-            alpha=0.4 if thin else 1.0, hatch="///" if thin else None,
-            edgecolor="white" if thin else "none")
+            edgecolor="none")
 ax.set_yticks(range(len(relc))); ax.set_yticklabels(relc.config, fontsize=10.5)
 # Diamonds = benchmark-balanced (macro) rate -> the mix-corrected estimate.
-ax.scatter(relc.macro, range(len(relc)), marker="D", s=62, color=BT_ROSE,
-           edgecolor="white", linewidth=1, zorder=5, label="benchmark-balanced (macro)")
+ax.scatter(relc.macro, range(len(relc)), marker="D", s=62, facecolors="none",
+           edgecolors=BT_PINK, linewidth=1.5, zorder=5, label="benchmark-balanced (macro)")
 for y, (_, r) in enumerate(relc.iterrows()):
     thin = r.n_benchmarks < COMPARABLE_BM
     # value labels live in a fixed right-hand column, clear of the error bars, so the
@@ -412,27 +364,27 @@ for y, (_, r) in enumerate(relc.iterrows()):
     ax.text(1.10, y, f"{r.micro:.0%}", va="center", ha="right",
             fontsize=10.5, weight="semibold", color=BT_BLACK)
     ax.text(1.235, y, f"n={r.n} · {int(r.n_benchmarks)}bm", va="center", ha="right",
-            fontsize=9, color=BT_ROSE if thin else BT_CONCRETE,
+            fontsize=9, color=BT_PINK if thin else BT_CONCRETE,
             weight="semibold" if thin else "normal")
 ax.set_xlim(0, 1.25)
 ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
 ax.set_xlabel("task success rate")
 ax.set_ylabel("")
 ax.tick_params(axis="x", labelsize=10)
-titled(ax, "Pooled bars vs benchmark-balanced diamonds",
-       "bar = pooled rate (±Wilson 95%) · ♦ = macro-avg over suites · hatched/red = <3 suites, "
-       "not cross-comparable", pad=24)
+titled(ax, "Pooled bars vs benchmark-balanced diamonds", pad=24)
 ax.margins(y=0.01)
 sns.despine(ax=ax, left=True)
 ax.tick_params(left=False)
-# Explicit legend so the red diamond is labelled on the plot itself, not just in the subtitle.
+# Legend covers the full key (bar/light-bar/diamond) with real swatches — no subtitle needed.
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 ax.legend(handles=[
     Patch(facecolor=BT_CMAP(0.75),
           label="pooled (micro) rate ±Wilson 95% CI"),
-    Line2D([0], [0], marker="D", linestyle="none", markerfacecolor=BT_ROSE,
-           markeredgecolor="white", markersize=9, label="benchmark-balanced (macro) rate"),
+    Patch(facecolor=BT_ICE_GREY, label="<3 suites, not cross-comparable"),
+    Line2D([0], [0], marker="D", linestyle="none", markerfacecolor="none",
+           markeredgecolor=BT_PINK, markeredgewidth=1.5, markersize=9,
+           label="benchmark-balanced (macro) rate"),
 ], loc="lower right", frameon=True, framealpha=0.92, edgecolor=BT_ICE_GREY, fontsize=9)
 plt.tight_layout()
 plt.show()
@@ -456,7 +408,7 @@ which is the single number that rewards being **both** high-scoring **and**
 well-sampled/predictable: a flashy mean on thin data has a low floor and sinks in
 the ranking.
 
-**Coverage gate:** bars that are **hatched / have a red `…bm` count** ran fewer
+**Coverage gate:** bars that are **light / have a pink `…bm` count** ran fewer
 than 3 suites, so their position on this axis is *not* comparable to the
 full-coverage configs — they may simply have run an easier (or harder) subset.
 Treat them as "insufficient evidence to rank," not as genuinely better/worse, and
@@ -484,9 +436,18 @@ ax.text(0.015, 0.97, "ERRATIC\nlow score · inconsistent", transform=ax.transAxe
 ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
 ax.set_xlabel("benchmark-balanced (macro) success  →  higher is better")
 ax.set_ylabel("cross-task std of success  →  lower is more predictable")
-titled(ax, "Reliability quadrant — dependable configs sit bottom-right",
-       "x = macro rate (mean of per-suite rates) · y = std of those per-suite rates · "
-       "bubble = sessions (see Stats key)")
+titled(ax, "Reliability quadrant — dependable configs sit bottom-right")
+# Bubble size encodes session count (n) — show real example-sized bubbles in a
+# legend rather than saying "bubble = sessions" in the subtitle. x/y meaning is
+# already carried by the axis labels, so it doesn't need restating either.
+n_lo, n_hi = rel.n.min(), rel.n.max()
+ex_n = sorted(set(int(v) for v in [n_lo, np.sqrt(n_lo * n_hi), n_hi]))
+ex_sizes = np.interp(ex_n, (n_lo, n_hi), (120, 800))
+size_handles = [plt.scatter([], [], s=s, color=BT_ICE_GREY, edgecolor=BT_CONCRETE, linewidth=1)
+                for s in ex_sizes]
+ax.legend(size_handles, [f"n={n}" for n in ex_n], title="sessions", loc="lower left",
+          frameon=True, framealpha=0.92, edgecolor=BT_ICE_GREY, fontsize=8,
+          title_fontsize=8.5, labelspacing=1.4, borderpad=1.1)
 ax.margins(0.08)
 plt.tight_layout(); plt.show()
 rel.sort_values(["macro", "cross_task_std"], ascending=[False, True])[
@@ -556,14 +517,14 @@ eta = pd.DataFrame({"factor": factors,
                     "eta_sq": [eta_sq(df, f) for f in factors]}).sort_values("eta_sq")
 
 fig, ax = plt.subplots(figsize=(9, 4.2))
-colors = [BT_BLUE_ACCENT if f != "config" else "#9bb8d3" for f in eta.factor]
+colors = [BT_BLUE_ACCENT if f != "config" else BT_ICE_GREY for f in eta.factor]
 ax.barh(eta.factor, eta.eta_sq, color=colors, height=0.62, zorder=3)
 for y, v in enumerate(eta.eta_sq):
     ax.text(v + 0.004, y, f"{v:.1%}", va="center", fontsize=10, weight="semibold",
             color=BT_BLACK)
 ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
 ax.set_xlim(0, max(eta.eta_sq) * 1.18)
-ax.set_xlabel("share of success variance explained (one-way η²)")
+ax.set_xlabel("share of success variance explained (one-way eta-squared)")
 titled(ax, "Which knob moves task success most?",
        "config = harness × model jointly · unbalanced design, bars don't sum to 100%")
 sns.despine(ax=ax, left=True); ax.tick_params(left=False)
@@ -585,7 +546,7 @@ harness's own suites" version mixed the harness effect with coverage. Here we cl
 that hole: for each model we take only the benchmarks that **every** one of its
 (qualifying) harnesses ran (≥5 tasks each), and score all harnesses **on that shared
 set only**. Each panel below is one model; each bar is a harness's pooled success on
-the shared suites (±Wilson 95%). The **Δ** in each title is the best−worst gap —
+the shared suites (±Wilson 95%). The **gap** in each title is the best−worst spread —
 the apples-to-apples swing from scaffolding — and each panel **names the shared
 suites underneath**, because *which* suites (and how many) back the swing is exactly
 what tells you how far to trust it. Note that for Claude, Gemini, and DeepSeek the
@@ -652,27 +613,27 @@ for i, model in enumerate(models_ord):
     ax.set_xlim(0, 1.18); ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
     # Title names the shared suite(s) the swing is measured on — so a Δ computed on
     # appworld-only reads differently from one spanning several suites.
-    ax.set_title(f"{model}   Δ{swing.loc[model, 'swing']:.0%}", loc="left",
+    ax.set_title(f"{model}   gap {swing.loc[model, 'swing']:.0%}", loc="left",
                  fontsize=11, fontweight="semibold", pad=22)
     ax.annotate(f"shared suites: {swing.loc[model, 'shared']}", xy=(0, 1), xytext=(0, 3),
                 xycoords="axes fraction", textcoords="offset points",
                 fontsize=8.5, color=BT_CONCRETE, va="bottom")
     sns.despine(ax=ax, left=True); ax.tick_params(left=False)
 fig_title(fig, "Harness report card — same model, same suites",
-          "each panel fixes the model · bar = success on the shared suites named per panel "
-          "(±Wilson 95%) · Δ = best−worst harness")
+          "each panel fixes the model, scored on the shared suites named per panel")
+key_box(fig, ["bar = success rate, ±Wilson 95% CI", "gap = best − worst harness"], loc="upper right")
 plt.tight_layout(rect=[0, 0, 1, 0.96]); plt.show()
 swing[["min", "max", "swing"]].round(3).assign(shared=swing["shared"])
 ''')
 
 md(r"""Read each panel as a model's **report card**: how well does it do under each
 harness, scored on the *same* tasks? The bigger the spread between the top and
-bottom bar (the **Δ** in the title), the more that model's success is dictated by
+bottom bar (the **gap** in the title), the more that model's success is dictated by
 its scaffolding rather than its weights. Even on the shared suites the spreads stay
 large — so the harness effect is **not** a coverage artefact. Read the **shared-suites
 label under each title** before trusting a swing: a panel whose only shared suite is
 `appworld` is an appworld-only verdict (narrower evidence than gpt-4.1's two-suite
-span), even though the Δ can look just as dramatic. Bars whose Wilson whiskers don't
+span), even though the gap can look just as dramatic. Bars whose Wilson whiskers don't
 overlap differ beyond sampling noise.""")
 
 md(r"""### 1f · Where do the 'gamblers' collapse?
@@ -680,9 +641,9 @@ md(r"""### 1f · Where do the 'gamblers' collapse?
 §1b flagged configs with a high average but a high **cross-task std** — strong on
 some suites, brittle on others. The cross-task std is a single number; this heatmap
 is the receipt. Each cell is a config's success on one benchmark (greyed where that
-config ran <5 tasks on the suite, too thin to read). Scan a row: an all-green row is
-a genuine generalist; a row with a red cell is a gambler whose headline average hid
-a suite where it falls apart.""")
+config ran <5 tasks on the suite, too thin to read). Scan a row: an all-dark-blue row
+is a genuine generalist; a row with a light/pale cell is a gambler whose headline
+average hid a suite where it falls apart.""")
 
 code(r'''cb = rate_table(df, ["config", "benchmark"])
 cb_n = cb.pivot(index="config", columns="benchmark", values="n")
@@ -702,9 +663,14 @@ fig, ax = plt.subplots(figsize=(10, 0.5 * len(cb_rate) + 2))
 sns.heatmap(cb_rate, mask=mask, annot=annot_lab, fmt="", cmap=BT_HEAT, vmin=0, vmax=1,
             linewidths=2, linecolor="white", cbar_kws={"label": "success rate", "shrink": .7},
             ax=ax, annot_kws={"fontsize": 8.5, "color": BT_BLACK})
-ax.set_facecolor("#f3f3f3")  # masked (thin) cells show as grey
-titled(ax, "Config × benchmark success — spotting the gamblers",
-       "grey = <5 tasks (too thin) · a red cell in an otherwise green row = a brittle suite")
+ax.set_facecolor(BT_ICE_GREY)  # masked (thin) cells show as grey
+titled(ax, "Config × benchmark success — spotting the gamblers")
+from matplotlib.patches import Patch
+ax.legend(handles=[Patch(facecolor=BT_ICE_GREY, edgecolor=BT_CONCRETE, linewidth=0.5,
+                          label="<5 tasks (too thin)")],
+          loc="upper right", bbox_to_anchor=(1.0, 1.18), frameon=True, framealpha=0.92,
+          edgecolor=BT_ICE_GREY, fontsize=8.5)
+key_box(ax, ["pale cell in an otherwise dark-blue row = a brittle suite"], loc="lower right")
 ax.set_xlabel(""); ax.set_ylabel("")
 ax.tick_params(length=0)
 plt.setp(ax.get_xticklabels(), rotation=18, ha="right")
@@ -712,8 +678,8 @@ plt.tight_layout(); plt.show()
 ''')
 
 md(r"""Read with §1b: a config can earn a high macro average yet still own a
-single red cell — that suite is where it will burn you in production. Conversely an
-all-green row with tight cells (e.g. the top `claude_code` configs) is what
+single pale cell — that suite is where it will burn you in production. Conversely an
+all-dark-blue row with tight cells (e.g. the top `claude_code` configs) is what
 "reliable" actually looks like: high *and* even across task types.""")
 
 md(r"""### 1g · Where the harness actually changes the outcome
@@ -726,7 +692,7 @@ same (model, benchmark)** — anywhere else there is literally nothing to compar
 drop it. That alone removes a lot of the grid (e.g. `browsecompplus` disappears
 entirely — only `claude_code` ever ran it), leaving just the cells that carry a real
 signal. Each surviving panel is one (benchmark, model); bars are the harnesses that
-ran it (±Wilson 95%), and panels are **ranked by Δ** — the success gap between the
+ran it (±Wilson 95%), and panels are **ranked by gap** — the success gap between the
 best and worst harness — so the most decisive cases come first.""")
 
 code(r'''cbm = rate_table(df, ["benchmark", "model", "harness"])
@@ -760,11 +726,12 @@ for i, grp in enumerate(cells):
     ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
     b, m = grp.iloc[0][["benchmark", "model"]]
     delta = grp.success_rate.max() - grp.success_rate.min()
-    ax.set_title(f"{b} · {m}   Δ{delta:.0%}", loc="left", fontsize=10, fontweight="semibold")
+    ax.set_title(f"{b} · {m}   gap {delta:.0%}", loc="left", fontsize=10, fontweight="semibold")
     sns.despine(ax=ax, left=True); ax.tick_params(left=False)
 fig_title(fig, "Where the harness changes the outcome — model & benchmark both fixed",
-          "only cells where ≥2 harnesses ran the same (model, benchmark) · bar = success (±Wilson 95%) · "
-          "panels ranked by Δ = best−worst harness")
+          "only cells where ≥2 harnesses ran the same (model, benchmark)")
+key_box(fig, ["bar = success rate, ±Wilson 95% CI", "gap = best − worst harness",
+              "panels ranked by gap, descending"], loc="upper right")
 plt.tight_layout(rect=[0, 0, 1, 0.95]); plt.show()
 print(f"{len(cells)} (benchmark, model) cells have a real harness comparison "
       f"(of {cbm.groupby(['benchmark','model']).ngroups} populated cells)")
@@ -849,10 +816,20 @@ axL.set_yticks(range(len(hp))); axL.set_yticklabels(hp.harness)
 axL.xaxis.set_major_formatter(mticker.PercentFormatter(1.0))
 axL.set_xlabel("effect on success vs. tool_calling (pp, adjusted for model + benchmark)")
 titled(axL, "Adjusted harness effect", "linear prob. model · HC1 SEs · 95% CI", pad=20)
+from matplotlib.lines import Line2D
+axL.legend(handles=[
+    Line2D([0], [0], marker="o", linestyle="none", markerfacecolor=BT_GREEN,
+           markeredgecolor="white", markersize=9, label="positive effect vs. reference"),
+    Line2D([0], [0], marker="o", linestyle="none", markerfacecolor=BT_ROSE,
+           markeredgecolor="white", markersize=9, label="negative effect vs. reference"),
+    Line2D([0], [0], marker="o", linestyle="none", markerfacecolor=BT_CONCRETE,
+           markeredgecolor="white", markersize=9, label="reference (tool_calling)"),
+], loc="lower right", frameon=True, framealpha=0.92, edgecolor=BT_ICE_GREY, fontsize=8)
 sns.despine(ax=axL, left=True); axL.tick_params(left=False)
 # Right: incremental R^2 by factor
 colors = {"harness": BT_BLUE, "model": BT_BLUE_ACCENT, "benchmark": BT_ICE_GREY}
-axR.barh(incr.index, incr.values, color=[colors[f] for f in incr.index], height=0.6, zorder=3)
+axR.barh(incr.index, incr.values, color=[colors[f] for f in incr.index],
+         edgecolor=BT_CONCRETE, linewidth=0.4, height=0.6, zorder=3)
 for y, v in enumerate(incr.values):
     axR.text(v + 0.003, y, f"{v:.1%}", va="center", fontsize=10, weight="semibold", color=BT_BLACK)
 axR.set_xlim(0, max(incr.values) * 1.2)
@@ -1012,28 +989,24 @@ harness-level failure signature; where its stripes change suite-to-suite, the
 
 md("### 2b · Error-signal distributions by harness (failed runs)")
 
-code(r'''fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+code(r'''fig, ax = plt.subplots(figsize=(8, 6))
 short = {h: h.replace("_", "\n", 1).replace("tool_calling_with_shortlisting", "tool_calling\n+shortlist")
          for h in order}
 _bt_cat = [BT_BLUE, BT_BLUE_ACCENT, BT_ICE_GREY, BT_PINK, BT_ROSE, BT_GREEN]
-sns.boxplot(data=fails, x="harness", y="tool_error_count", order=order,
-            hue="harness", palette=_bt_cat[:len(order)], legend=False, ax=axes[0],
-            showfliers=False, linewidth=1.2, width=0.6)
-axes[0].set_title("Tool-call errors per failed run", loc="left")
 sns.boxplot(data=fails, x="harness", y="total_tokens", order=order,
-            hue="harness", palette=_bt_cat[:len(order)], legend=False, ax=axes[1],
+            hue="harness", palette=_bt_cat[:len(order)], legend=False, ax=ax,
             showfliers=False, linewidth=1.2, width=0.6)
-axes[1].set_title("Token usage per failed run", loc="left")
-axes[1].yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v/1e6:.1f}M"))
-fig_title(fig, "Error-signal distributions by harness (failed runs)",
-          "box = IQR (25th–75th pct) · line = median · whiskers = 1.5×IQR · outliers hidden")
-for a in axes:
-    a.set_xlabel("")
-    a.set_xticklabels([short[t.get_text()] for t in a.get_xticklabels()], fontsize=8.5)
-    sns.despine(ax=a)
-plt.tight_layout(rect=[0, 0, 1, 0.95]); plt.show()
+ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v/1e6:.1f}M"))
+titled(ax, "Token usage per failed run")
+key_box(ax, ["box = IQR (25th-75th pct)", "line = median", "whiskers = 1.5x IQR, outliers hidden"],
+        loc="upper right")
+ax.set_xlabel("")
+ax.set_xticklabels([short[t.get_text()] for t in ax.get_xticklabels()], fontsize=8.5)
+sns.despine(ax=ax)
+plt.tight_layout(); plt.show()
 
-# Success vs failure on the discriminating signals
+# Success vs failure on the discriminating signals (tool_error_count near-zero
+# outside appworld, too sparse to plot per-harness here — see table below instead)
 df.groupby("success")[["tool_error_count", "error_span_count", "total_tokens", "num_llm_calls"]].mean().round(1)
 ''')
 
@@ -1069,8 +1042,8 @@ for bi, bench in enumerate(bench_keep2):
     ax.set_xticklabels([f"{h}\n(n={int(fb[(bench, h)])})" for h in hs], fontsize=8)
     sns.despine(ax=ax)
 fig_title(fig, "Token usage per failed run — benchmark held fixed",
-          f"box = IQR · line = median · whiskers = 1.5×IQR · outliers hidden · "
           f"(benchmark, harness) cells with ≥{MIN_FAIL} failures")
+key_box(fig, ["box = IQR, line = median", "whiskers = 1.5x IQR, outliers hidden"], loc="upper right")
 plt.tight_layout(rect=[0, 0, 1, 0.97]); plt.show()
 ''')
 
@@ -1261,7 +1234,7 @@ for m, r in bump.iterrows():
             color=pal[m], markersize=8, alpha=1 if moved else 0.55, zorder=3)
     ax.text(-0.04, r.rank_all, f"{m}  ({r.rate_all:.0%})", ha="right", va="center",
             fontsize=9.5, color=BT_BLACK)
-    tag = m if not moved else f"{m}  ▲" if r.rank_no_high < r.rank_all else f"{m}  ▼"
+    tag = m if not moved else f"{m}  up" if r.rank_no_high < r.rank_all else f"{m}  down"
     ax.text(1.04, r.rank_no_high, f"{tag}  ({r.rate_no_high:.0%})", ha="left", va="center",
             fontsize=9.5, color=BT_BLACK)
 ax.set_xlim(-0.75, 1.75); ax.invert_yaxis()
@@ -1405,8 +1378,16 @@ ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0))
 ax.set_xlabel("avg cost per task  →  cheaper is better  (log $, LiteLLM rates)")
 ax.set_ylabel("benchmark-balanced (macro) success  →  higher is better")
 titled(ax, "Cost vs quality — the deployable frontier",
-       "upper-left dominates · bubble = sessions · $ = LiteLLM rates × measured output share", pad=20)
-ax.legend(loc="lower right", frameon=True, framealpha=0.9, edgecolor=BT_ICE_GREY)
+       "upper-left dominates · $ = LiteLLM rates × measured output share", pad=20)
+color_legend = ax.legend(loc="lower right", frameon=True, framealpha=0.9, edgecolor=BT_ICE_GREY)
+ax.add_artist(color_legend)
+n_lo, n_hi = P.n.min(), P.n.max()
+ex_n = sorted(set(int(v) for v in [n_lo, np.sqrt(n_lo * n_hi), n_hi]))
+ex_sizes = [70 + n * 0.7 for n in ex_n]
+size_handles = [plt.scatter([], [], s=s, color=BT_ICE_GREY, edgecolor=BT_CONCRETE, linewidth=1)
+                for s in ex_sizes]
+ax.legend(size_handles, [f"n={n}" for n in ex_n], title="sessions", loc="upper right",
+          frameon=True, framealpha=0.9, edgecolor=BT_ICE_GREY, fontsize=8, title_fontsize=8.5)
 ax.margins(0.08); sns.despine(ax=ax)
 plt.tight_layout(); plt.show()
 P.sort_values("macro", ascending=False)[
@@ -1432,9 +1413,7 @@ for c, sub in df.groupby("config"):
 cps = pd.DataFrame(rows).sort_values("usd_success").reset_index(drop=True)
 
 fig, ax = plt.subplots(figsize=(11.5, 0.46 * len(cps) + 1.6))
-from matplotlib.colors import LinearSegmentedColormap as _LSC
-_bt_succ = _LSC.from_list("bt_succ", ["#651D31", "#F5AFD1", "#3A77EB", "#2C1FEB"])
-ax.barh(range(len(cps)), cps.usd_success, color=[_bt_succ(s) for s in cps.succ],
+ax.barh(range(len(cps)), cps.usd_success, color=[BT_SUCC(s) for s in cps.succ],
         height=0.72, zorder=3, edgecolor="white")
 ax.set_yticks(range(len(cps))); ax.set_yticklabels(cps.config, fontsize=9.5)
 ax.set_xscale("log")
@@ -1446,7 +1425,11 @@ ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
 ax.set_xlim(right=cps.usd_success.max() * 2.2)
 ax.set_xlabel("cost per SUCCESSFUL task  (log $, LiteLLM rates) — total spend ÷ successes")
 titled(ax, "Cost per successful outcome — the cheap-but-failing configs are the priciest",
-       "bar colour = success rate (low → high) · $ = LiteLLM rates × measured output share", pad=20)
+       "$ = LiteLLM rates × measured output share", pad=20)
+sm = plt.cm.ScalarMappable(cmap=BT_SUCC, norm=plt.Normalize(0, 1))
+cbar = fig.colorbar(sm, ax=ax, shrink=0.5, pad=0.02, aspect=18)
+cbar.set_label("success rate", fontsize=8.5, color=BT_CONCRETE)
+cbar.ax.tick_params(labelsize=7.5, colors=BT_CONCRETE)
 sns.despine(ax=ax, left=True); ax.tick_params(left=False)
 plt.tight_layout(); plt.show()
 cps.assign(usd_per_success=cps.usd_success.round(2), tok_per_success=cps.tok_success.round(0))[
@@ -1461,7 +1444,7 @@ failures cost more** (the thrash pattern from §8 — the agent loops and burns 
 failing) while **conversational `tau2` failures cost *less*** (the give-up pattern — the agent
 bails early and cheaply). So a blanket "failures are expensive" guardrail is exactly backwards
 for half the task families. Ratio = mean tokens of failed runs ÷ mean tokens of successful
-runs; the yellow band marks the leaderboard's pooled +20–54%.""")
+runs; the pink band marks the leaderboard's pooled +20–54%.""")
 
 code(r'''rows = []
 for b, sub in df.groupby("benchmark"):
@@ -1485,9 +1468,13 @@ ax.set_xticks(range(len(rc)))
 ax.set_xticklabels([BENCH_ABBR.get(b, b) for b in rc.benchmark], rotation=12, ha="right")
 ax.set_ylabel("failed-run tokens ÷ successful-run tokens")
 ax.set_ylim(0, max(rc.ratio) * 1.18)
-titled(ax, "Do failures cost more? Only on coding tasks",
-       "rose >1 = failures cost MORE (thrash) · blue <1 = failures cost LESS (give up) · "
-       "pink band = leaderboard's pooled claim", pad=20)
+titled(ax, "Do failures cost more? Only on coding tasks", pad=20)
+from matplotlib.patches import Patch
+ax.legend(handles=[
+    Patch(facecolor=BT_ROSE, label="failures cost MORE (thrash)"),
+    Patch(facecolor=BT_BLUE_ACCENT, label="failures cost LESS (give up)"),
+    Patch(facecolor=BT_PINK, alpha=0.5, label="leaderboard's pooled claim (+20–54%)"),
+], loc="upper left", frameon=True, framealpha=0.92, edgecolor=BT_ICE_GREY, fontsize=8.5)
 sns.despine(ax=ax)
 plt.tight_layout(); plt.show()
 ''')
@@ -1512,10 +1499,8 @@ for (b, c), sub in df.groupby(["benchmark", "config"]):
         rows.append({"benchmark": b, "config": c, "succ": sub.success.mean(),
                      "usd_success": sub.cost_usd.sum() / ns})
 cb = pd.DataFrame(rows)
-from matplotlib.colors import LinearSegmentedColormap as _LSC
-_bt_succ = _LSC.from_list("bt_succ", ["#651D31", "#F5AFD1", "#3A77EB", "#2C1FEB"])
 
-def cps_figure(group, title, sub_caption):
+def cps_figure(group, title, key_lines):
     benches = [b for b in group if b in set(cb.benchmark)]
     counts = [max((cb.benchmark == b).sum(), 2) for b in benches]   # rows ∝ #configs
     fig, axes = plt.subplots(len(benches), 1, squeeze=False,
@@ -1524,7 +1509,7 @@ def cps_figure(group, title, sub_caption):
     axes = axes[:, 0]
     for ax, b in zip(axes, benches):
         s = cb[cb.benchmark == b].sort_values("usd_success").reset_index(drop=True)
-        ax.barh(range(len(s)), s.usd_success, color=[_bt_succ(v) for v in s.succ],
+        ax.barh(range(len(s)), s.usd_success, color=[BT_SUCC(v) for v in s.succ],
                 height=0.72, zorder=3, edgecolor="white")
         ax.set_yticks(range(len(s))); ax.set_yticklabels(s.config, fontsize=8.5)
         ax.set_xscale("log")
@@ -1532,18 +1517,24 @@ def cps_figure(group, title, sub_caption):
             ax.text(r.usd_success * 1.10, y, f"${r.usd_success:,.2f}  ·  {r.succ:.0%}",
                     va="center", ha="left", fontsize=8, color=BT_BLACK)
         ax.invert_yaxis()                              # cheapest-per-success on top
-        ax.set_xlim(right=s.usd_success.max() * 3.4)
+        ax.set_xlim(right=s.usd_success.max() * 5.5)
         ax.xaxis.set_major_formatter(mticker.FuncFormatter(
             lambda v, _: f"${v:,.2f}" if v < 10 else f"${v:,.0f}"))
         ax.set_title(b, loc="left", fontsize=11, fontweight="semibold")
         sns.despine(ax=ax, left=True); ax.tick_params(left=False)
-    fig_title(fig, title, sub_caption)
-    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    fig_title(fig, title)
+    sm = plt.cm.ScalarMappable(cmap=BT_SUCC, norm=plt.Normalize(0, 1))
+    cbar = fig.colorbar(sm, ax=axes, shrink=0.4, pad=0.05, aspect=14)
+    cbar.set_label("success rate", fontsize=8.5, color=BT_CONCRETE)
+    cbar.ax.tick_params(labelsize=7.5, colors=BT_CONCRETE)
+    key_box(fig, key_lines, loc="upper right")
+    plt.tight_layout(rect=[0, 0, 0.90, 0.97])
 
-SUB = ("suite held fixed · bar colour = success rate (low → high) · "
-       "$ = LiteLLM rates × measured output share · configs with ≥10 runs · cheapest on top")
-cps_figure(CODING, "Cost per successful task — coding / agentic suites", SUB)
-cps_figure(CONV, "Cost per successful task — conversational τ² suites", SUB)
+KEY = ["suite held fixed · cheapest on top",
+       "$ = LiteLLM rates × measured output share",
+       "configs with ≥10 runs"]
+cps_figure(CODING, "Cost per successful task — coding / agentic suites", KEY)
+cps_figure(CONV, "Cost per successful task — conversational tau2 suites", KEY)
 plt.show()
 ''')
 
@@ -1574,7 +1565,7 @@ either by restricting to a shared suite set, faceting by benchmark, or adjusting
 benchmark as a covariate.
 
 - **§1 — reliability.** Rank by `floor` (Wilson lower bound), not raw average, and
-  ignore the hatched (<3-suite) bars for cross-config comparison. The harness-effect
+  ignore the light (<3-suite) bars for cross-config comparison. The harness-effect
   headline survives the coverage fix: in the adjusted model (§1h) `claude_code` is
   **+28 pp over `tool_calling` holding model and benchmark fixed**, and harness still
   adds more incremental R² than model (≈5% vs ≈1%) — but the *raw* §1d gap was
